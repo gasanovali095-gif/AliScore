@@ -123,6 +123,14 @@ h1,h2,h3{
   background:#16834d;
 }
 
+.btn-goal{
+  background:#16834d;
+}
+
+.btn-goal-minus{
+  background:#8b3030;
+}
+
 input,
 select{
   width:100%;
@@ -225,6 +233,29 @@ input[type="file"]{
   border:1px solid rgba(255,255,255,.12);
 }
 
+.goal-admin{
+  margin-top:12px;
+  padding:12px;
+  background:#091827;
+  border-radius:12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.goal-admin-count{
+  font-size:18px;
+  font-weight:700;
+}
+
+.goal-admin-buttons{
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
 .table-wrap{
   overflow-x:auto;
 }
@@ -319,6 +350,10 @@ hr{
   .player-row > div:last-child{
     text-align:right;
   }
+
+  .goal-admin{
+    align-items:flex-start;
+  }
 }
 </style>
 </head>
@@ -350,8 +385,6 @@ hr{
       </p>
     </div>
   </div>
-
-  <!-- NOTIFICATIONS -->
 
   <div class="notification-box">
 
@@ -3204,9 +3237,7 @@ function renderAdminPlayers(){
 
             <img
               class="player-photo"
-              id="
-                player-photo-preview-${player.id}
-              "
+              id="player-photo-preview-${player.id}"
               src="${escapeHtml(
                 getPlayerPhoto(
                   player
@@ -3244,6 +3275,44 @@ function renderAdminPlayers(){
           </div>
 
 
+          <!-- GOAL CONTROLS -->
+
+          <div class="goal-admin">
+
+            <div class="goal-admin-count">
+
+              ⚽ Qollar:
+              <span id="goal-count-${player.id}">
+                ${Number(
+                  player.goals || 0
+                )}
+              </span>
+
+            </div>
+
+
+            <div class="goal-admin-buttons">
+
+              <button
+                class="btn btn-goal"
+                onclick="addPlayerGoal(${player.id})"
+              >
+                ⚽ +1
+              </button>
+
+
+              <button
+                class="btn btn-goal-minus"
+                onclick="removePlayerGoal(${player.id})"
+              >
+                −1
+              </button>
+
+            </div>
+
+          </div>
+
+
           <br>
 
 
@@ -3270,9 +3339,7 @@ function renderAdminPlayers(){
 
 
             <select
-              id="
-                player-position-${player.id}
-              "
+              id="player-position-${player.id}"
             >
 
               <option value="">
@@ -3335,9 +3402,7 @@ function renderAdminPlayers(){
 
 
             <select
-              id="
-                player-team-${player.id}
-              "
+              id="player-team-${player.id}"
             >
 
               <option value="">
@@ -3430,9 +3495,7 @@ function renderAdminPlayers(){
           <div class="photo-admin">
 
             <img
-              id="
-                player-photo-admin-${player.id}
-              "
+              id="player-photo-admin-${player.id}"
               src="${escapeHtml(
                 getPlayerPhoto(
                   player
@@ -3460,16 +3523,10 @@ function renderAdminPlayers(){
 
 
               <input
-                id="
-                  player-photo-${player.id}
-                "
+                id="player-photo-${player.id}"
                 type="file"
                 accept="image/*"
-                onchange="
-                  previewPlayerPhoto(
-                    ${player.id}
-                  )
-                "
+                onchange="previewPlayerPhoto(${player.id})"
               >
 
             </div>
@@ -3477,11 +3534,7 @@ function renderAdminPlayers(){
 
             <button
               class="btn"
-              onclick="
-                savePlayerPhoto(
-                  ${player.id}
-                )
-              "
+              onclick="savePlayerPhoto(${player.id})"
             >
               📷 Foto əlavə et
             </button>
@@ -3489,11 +3542,7 @@ function renderAdminPlayers(){
 
             <button
               class="btn btn-danger"
-              onclick="
-                removePlayerPhoto(
-                  ${player.id}
-                )
-              "
+              onclick="removePlayerPhoto(${player.id})"
             >
               🗑️ Foto sil
             </button>
@@ -3506,11 +3555,7 @@ function renderAdminPlayers(){
 
           <button
             class="btn"
-            onclick="
-              savePlayer(
-                ${player.id}
-              )
-            "
+            onclick="savePlayer(${player.id})"
           >
             Oyunçunu və statistikanı saxla
           </button>
@@ -3518,14 +3563,8 @@ function renderAdminPlayers(){
 
           <button
             class="btn btn-danger"
-            onclick="
-              deletePlayer(
-                ${player.id}
-              )
-            "
-            style="
-              margin-left:8px;
-            "
+            onclick="deletePlayer(${player.id})"
+            style="margin-left:8px;"
           >
             Sil
           </button>
@@ -3535,6 +3574,154 @@ function renderAdminPlayers(){
       `;
 
     }).join("");
+
+}
+
+
+/* =========================
+   ADD PLAYER GOAL
+========================= */
+
+async function addPlayerGoal(id){
+
+  try{
+
+    const response =
+      await fetch(
+        "/api/players/" +
+        id +
+        "/goal",
+        {
+          method:"POST",
+          credentials:"include"
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if(!response.ok){
+
+      alert(
+        data.error ||
+        "Qol əlavə olunmadı."
+      );
+
+      return;
+
+    }
+
+
+    const updatedPlayer =
+      data.player;
+
+
+    const player =
+      players.find(
+        p =>
+          Number(p.id) ===
+          Number(id)
+      );
+
+
+    if(player){
+
+      player.goals =
+        Number(
+          updatedPlayer.goals || 0
+        );
+
+    }
+
+
+    renderPlayersAfterChange();
+
+
+  }catch(error){
+
+    console.error(error);
+
+    alert(
+      "Server xətası."
+    );
+
+  }
+
+}
+
+
+/* =========================
+   REMOVE PLAYER GOAL
+========================= */
+
+async function removePlayerGoal(id){
+
+  try{
+
+    const response =
+      await fetch(
+        "/api/players/" +
+        id +
+        "/goal",
+        {
+          method:"DELETE",
+          credentials:"include"
+        }
+      );
+
+
+    const data =
+      await response.json();
+
+
+    if(!response.ok){
+
+      alert(
+        data.error ||
+        "Qol silinmədi."
+      );
+
+      return;
+
+    }
+
+
+    const updatedPlayer =
+      data.player;
+
+
+    const player =
+      players.find(
+        p =>
+          Number(p.id) ===
+          Number(id)
+      );
+
+
+    if(player){
+
+      player.goals =
+        Number(
+          updatedPlayer.goals || 0
+        );
+
+    }
+
+
+    renderPlayersAfterChange();
+
+
+  }catch(error){
+
+    console.error(error);
+
+    alert(
+      "Server xətası."
+    );
+
+  }
 
 }
 
@@ -4415,11 +4602,7 @@ function renderAdminMatches(){
 
           <button
             class="btn btn-danger"
-            onclick="
-              deleteMatch(
-                ${match.id}
-              )
-            "
+            onclick="deleteMatch(${match.id})"
           >
             Sil
           </button>
@@ -4677,8 +4860,6 @@ document.addEventListener(
 
     checkNotifications();
 
-
-    /* Ana səhifə aktiv olsun */
 
     showSection(
       "home"
