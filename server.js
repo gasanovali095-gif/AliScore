@@ -12,40 +12,51 @@ app.use(cookieParser());
 const PORT = process.env.PORT || 10000;
 const DATABASE_URL = process.env.DATABASE_URL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-const JWT_SECRET =
-  process.env.JWT_SECRET || "change-this-secret-in-render";
+const JWT_SECRET = process.env.JWT_SECRET || "change-this-secret";
 
-if (!DATABASE_URL) {
-  console.error("DATABASE_URL is missing");
-  process.exit(1);
-}
-
-if (!ADMIN_PASSWORD) {
-  console.error("ADMIN_PASSWORD is missing");
-  process.exit(1);
-}
+if (!DATABASE_URL) process.exit(1);
+if (!ADMIN_PASSWORD) process.exit(1);
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
+/* =========================
+   DATABASE
+========================= */
+
 async function initDb() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS teams (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
+
       points INTEGER NOT NULL DEFAULT 0,
       played INTEGER NOT NULL DEFAULT 0,
       wins INTEGER NOT NULL DEFAULT 0,
       draws INTEGER NOT NULL DEFAULT 0,
       losses INTEGER NOT NULL DEFAULT 0,
-      goals_for INTEGER NOT NULL DEFAULT 0,
-      goals_against INTEGER NOT NULL DEFAULT 0
+      goal_difference INTEGER NOT NULL DEFAULT 0
     );
 
     ALTER TABLE teams
-    ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0;
+      ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0;
+
+    ALTER TABLE teams
+      ADD COLUMN IF NOT EXISTS played INTEGER NOT NULL DEFAULT 0;
+
+    ALTER TABLE teams
+      ADD COLUMN IF NOT EXISTS wins INTEGER NOT NULL DEFAULT 0;
+
+    ALTER TABLE teams
+      ADD COLUMN IF NOT EXISTS draws INTEGER NOT NULL DEFAULT 0;
+
+    ALTER TABLE teams
+      ADD COLUMN IF NOT EXISTS losses INTEGER NOT NULL DEFAULT 0;
+
+    ALTER TABLE teams
+      ADD COLUMN IF NOT EXISTS goal_difference INTEGER NOT NULL DEFAULT 0;
 
     CREATE TABLE IF NOT EXISTS matches (
       id SERIAL PRIMARY KEY,
@@ -62,11 +73,11 @@ async function initDb() {
     );
   `);
 
-  const count = await pool.query(
+  const result = await pool.query(
     "SELECT COUNT(*)::int AS count FROM teams"
   );
 
-  if (count.rows[0].count === 0) {
+  if (result.rows[0].count === 0) {
     const names = [
       "Lotu pişiklər",
       "MSN FK",
@@ -77,12 +88,20 @@ async function initDb() {
 
     for (const name of names) {
       await pool.query(
-        "INSERT INTO teams (name, points) VALUES ($1, 0)",
+        `
+        INSERT INTO teams
+        (name, points, played, wins, draws, losses, goal_difference)
+        VALUES ($1, 0, 0, 0, 0, 0, 0)
+        `,
         [name]
       );
     }
   }
 }
+
+/* =========================
+   AUTH
+========================= */
 
 function auth(req, res, next) {
   const token = req.cookies.aliscore_admin;
@@ -97,27 +116,11 @@ function auth(req, res, next) {
     req.admin = jwt.verify(token, JWT_SECRET);
     next();
   } catch {
-    return res.status(401).json({
+    res.status(401).json({
       error: "Admin sessiyası bitib"
     });
   }
 }
-
-app.get("/api/health", async (req, res) => {
-  try {
-    await pool.query("SELECT 1");
-
-    res.json({
-      ok: true,
-      database: "connected"
-    });
-  } catch {
-    res.status(500).json({
-      ok: false,
-      database: "disconnected"
-    });
-  }
-});
 
 app.post("/api/admin/login", (req, res) => {
   const { password } = req.body || {};
@@ -150,10 +153,7 @@ app.post("/api/admin/logout", (req, res) => {
 });
 
 app.get("/api/admin/me", auth, (req, res) => {
-  res.json({
-    ok: true,
-    admin: true
-  });
+  res.json({ ok: true });
 });
 
 /* =========================
@@ -171,14 +171,12 @@ app.get("/api/teams", async (req, res) => {
         wins,
         draws,
         losses,
-        goals_for,
-        goals_against,
-        (goals_for - goals_against) AS goal_difference
+        goal_difference
       FROM teams
       ORDER BY
         points DESC,
         goal_difference DESC,
-        goals_for DESC,
+        wins DESC,
         name ASC
     `);
 
@@ -190,13 +188,18 @@ app.get("/api/teams", async (req, res) => {
   }
 });
 
-/* Добавление команды */
+/* ADD TEAM */
 
 app.post("/api/teams", auth, async (req, res) => {
   const name = String(req.body?.name || "").trim();
 
-  const points = Number(
-    req.body?.points ?? 0
+  const points = Number(req.body?.points ?? 0);
+  const played = Number(req.body?.played ?? 0);
+  const wins = Number(req.body?.wins ?? 0);
+  const draws = Number(req.body?.draws ?? 0);
+  const losses = Number(req.body?.losses ?? 0);
+  const goalDifference = Number(
+    req.body?.goalDifference ?? 0
   );
 
   if (!name) {
@@ -205,20 +208,46 @@ app.post("/api/teams", auth, async (req, res) => {
     });
   }
 
-  if (!Number.isInteger(points) || points < 0) {
+  const values = [
+    points,
+    played,
+    wins,
+    draws,
+    losses,
+    goalDifference
+  ];
+
+  if (values.some(v => !Number.isInteger(v))) {
     return res.status(400).json({
-      error: "Xal 0 və ya daha böyük tam ədəd olmalıdır"
+      error: "Bütün göstəricilər tam ədəd olmalıdır"
     });
   }
 
   try {
     const result = await pool.query(
       `
-      INSERT INTO teams (name, points)
-      VALUES ($1, $2)
+      INSERT INTO teams
+      (
+        name,
+        points,
+        played,
+        wins,
+        draws,
+        losses,
+        goal_difference
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7)
       RETURNING *
       `,
-      [name, points]
+      [
+        name,
+        points,
+        played,
+        wins,
+        draws,
+        losses,
+        goalDifference
+      ]
     );
 
     res.json(result.rows[0]);
@@ -229,17 +258,20 @@ app.post("/api/teams", auth, async (req, res) => {
   }
 });
 
-/* Редактирование команды + ручное изменение Xal */
+/* EDIT ALL TEAM STATS */
 
 app.put("/api/teams/:id", auth, async (req, res) => {
   const id = Number(req.params.id);
 
-  const name = String(
-    req.body?.name || ""
-  ).trim();
+  const name = String(req.body?.name || "").trim();
 
-  const points = Number(
-    req.body?.points
+  const points = Number(req.body?.points);
+  const played = Number(req.body?.played);
+  const wins = Number(req.body?.wins);
+  const draws = Number(req.body?.draws);
+  const losses = Number(req.body?.losses);
+  const goalDifference = Number(
+    req.body?.goalDifference
   );
 
   if (!name) {
@@ -248,9 +280,18 @@ app.put("/api/teams/:id", auth, async (req, res) => {
     });
   }
 
-  if (!Number.isInteger(points) || points < 0) {
+  const values = [
+    points,
+    played,
+    wins,
+    draws,
+    losses,
+    goalDifference
+  ];
+
+  if (values.some(v => !Number.isInteger(v))) {
     return res.status(400).json({
-      error: "Xal 0 və ya daha böyük tam ədəd olmalıdır"
+      error: "Bütün göstəricilər tam ədəd olmalıdır"
     });
   }
 
@@ -260,11 +301,25 @@ app.put("/api/teams/:id", auth, async (req, res) => {
       UPDATE teams
       SET
         name = $1,
-        points = $2
-      WHERE id = $3
+        points = $2,
+        played = $3,
+        wins = $4,
+        draws = $5,
+        losses = $6,
+        goal_difference = $7
+      WHERE id = $8
       RETURNING *
       `,
-      [name, points, id]
+      [
+        name,
+        points,
+        played,
+        wins,
+        draws,
+        losses,
+        goalDifference,
+        id
+      ]
     );
 
     if (!result.rowCount) {
@@ -281,11 +336,9 @@ app.put("/api/teams/:id", auth, async (req, res) => {
   }
 });
 
-/* Удаление команды */
+/* DELETE TEAM */
 
 app.delete("/api/teams/:id", auth, async (req, res) => {
-  const id = Number(req.params.id);
-
   try {
     const result = await pool.query(
       `
@@ -293,7 +346,7 @@ app.delete("/api/teams/:id", auth, async (req, res) => {
       WHERE id = $1
       RETURNING id
       `,
-      [id]
+      [Number(req.params.id)]
     );
 
     if (!result.rowCount) {
@@ -302,9 +355,7 @@ app.delete("/api/teams/:id", auth, async (req, res) => {
       });
     }
 
-    res.json({
-      ok: true
-    });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({
       error: e.message
@@ -324,31 +375,14 @@ app.get("/api/matches", async (req, res) => {
         m.match_date,
         m.home_score,
         m.away_score,
-
         h.name AS home_team,
         a.name AS away_team,
-
         h.id AS home_team_id,
         a.id AS away_team_id
-
       FROM matches m
-
-      JOIN teams h
-        ON h.id = m.home_team_id
-
-      JOIN teams a
-        ON a.id = m.away_team_id
-
-      ORDER BY
-        CASE
-          WHEN m.home_score IS NULL
-            OR m.away_score IS NULL
-          THEN 0
-          ELSE 1
-        END,
-
-        m.match_date ASC,
-        m.id ASC
+      JOIN teams h ON h.id = m.home_team_id
+      JOIN teams a ON a.id = m.away_team_id
+      ORDER BY m.id DESC
     `);
 
     res.json(result.rows);
@@ -359,17 +393,11 @@ app.get("/api/matches", async (req, res) => {
   }
 });
 
-/* Создание матча */
+/* ADD MATCH */
 
 app.post("/api/matches", auth, async (req, res) => {
-  const homeTeamId = Number(
-    req.body?.homeTeamId
-  );
-
-  const awayTeamId = Number(
-    req.body?.awayTeamId
-  );
-
+  const homeTeamId = Number(req.body?.homeTeamId);
+  const awayTeamId = Number(req.body?.awayTeamId);
   const matchDate = String(
     req.body?.matchDate || ""
   ).trim();
@@ -388,15 +416,8 @@ app.post("/api/matches", auth, async (req, res) => {
     const result = await pool.query(
       `
       INSERT INTO matches
-      (
-        home_team_id,
-        away_team_id,
-        match_date
-      )
-
-      VALUES
-      ($1, $2, $3)
-
+      (home_team_id, away_team_id, match_date)
+      VALUES ($1,$2,$3)
       RETURNING *
       `,
       [
@@ -407,14 +428,14 @@ app.post("/api/matches", auth, async (req, res) => {
     );
 
     res.json(result.rows[0]);
-  } catch {
+  } catch (e) {
     res.status(400).json({
-      error: "Matç yaradıla bilmədi"
+      error: e.message
     });
   }
 });
 
-/* Изменение результата */
+/* EDIT MATCH */
 
 app.put("/api/matches/:id", auth, async (req, res) => {
   const id = Number(req.params.id);
@@ -435,23 +456,18 @@ app.put("/api/matches/:id", auth, async (req, res) => {
     req.body?.matchDate || ""
   ).trim();
 
-  if (
-    homeScore !== null &&
-    (!Number.isInteger(homeScore) ||
-      homeScore < 0)
-  ) {
-    return res.status(400).json({
-      error: "Hesab 0 və ya daha böyük tam ədəd olmalıdır"
-    });
-  }
+  const scores = [
+    homeScore,
+    awayScore
+  ].filter(v => v !== null);
 
   if (
-    awayScore !== null &&
-    (!Number.isInteger(awayScore) ||
-      awayScore < 0)
+    scores.some(
+      v => !Number.isInteger(v) || v < 0
+    )
   ) {
     return res.status(400).json({
-      error: "Hesab 0 və ya daha böyük tam ədəd olmalıdır"
+      error: "Hesab düzgün deyil"
     });
   }
 
@@ -459,14 +475,11 @@ app.put("/api/matches/:id", auth, async (req, res) => {
     const result = await pool.query(
       `
       UPDATE matches
-
       SET
         home_score = $1,
         away_score = $2,
         match_date = $3
-
       WHERE id = $4
-
       RETURNING *
       `,
       [
@@ -483,8 +496,6 @@ app.put("/api/matches/:id", auth, async (req, res) => {
       });
     }
 
-    await recalculateStats();
-
     res.json(result.rows[0]);
   } catch (e) {
     res.status(500).json({
@@ -493,7 +504,7 @@ app.put("/api/matches/:id", auth, async (req, res) => {
   }
 });
 
-/* Удаление матча */
+/* DELETE MATCH */
 
 app.delete("/api/matches/:id", auth, async (req, res) => {
   try {
@@ -512,145 +523,13 @@ app.delete("/api/matches/:id", auth, async (req, res) => {
       });
     }
 
-    await recalculateStats();
-
-    res.json({
-      ok: true
-    });
+    res.json({ ok: true });
   } catch (e) {
     res.status(500).json({
       error: e.message
     });
   }
 });
-
-/* =========================
-   STATS
-========================= */
-
-/*
-  Матчи автоматически считают:
-
-  O  = сыграно
-  Q  = победы
-  B  = ничьи
-  M  = поражения
-  AV = разница голов
-
-  Xal = ОЧКИ
-
-  Xal НЕ пересчитывается автоматически.
-  Его меняет администратор вручную.
-*/
-
-async function recalculateStats() {
-  const client = await pool.connect();
-
-  try {
-    await client.query("BEGIN");
-
-    await client.query(`
-      UPDATE teams
-
-      SET
-        played = 0,
-        wins = 0,
-        draws = 0,
-        losses = 0,
-        goals_for = 0,
-        goals_against = 0
-    `);
-
-    const matches = await client.query(`
-      SELECT
-        home_team_id,
-        away_team_id,
-        home_score,
-        away_score
-
-      FROM matches
-
-      WHERE
-        home_score IS NOT NULL
-        AND away_score IS NOT NULL
-    `);
-
-    for (const m of matches.rows) {
-      const h = m.home_team_id;
-      const a = m.away_team_id;
-
-      const hs = m.home_score;
-      const as = m.away_score;
-
-      await client.query(
-        `
-        UPDATE teams
-
-        SET
-          played = played + 1,
-          goals_for = goals_for + $1,
-          goals_against = goals_against + $2
-
-        WHERE id = $3
-        `,
-        [hs, as, h]
-      );
-
-      await client.query(
-        `
-        UPDATE teams
-
-        SET
-          played = played + 1,
-          goals_for = goals_for + $1,
-          goals_against = goals_against + $2
-
-        WHERE id = $3
-        `,
-        [as, hs, a]
-      );
-
-      if (hs > as) {
-        await client.query(
-          "UPDATE teams SET wins = wins + 1 WHERE id = $1",
-          [h]
-        );
-
-        await client.query(
-          "UPDATE teams SET losses = losses + 1 WHERE id = $1",
-          [a]
-        );
-      } else if (hs < as) {
-        await client.query(
-          "UPDATE teams SET losses = losses + 1 WHERE id = $1",
-          [h]
-        );
-
-        await client.query(
-          "UPDATE teams SET wins = wins + 1 WHERE id = $1",
-          [a]
-        );
-      } else {
-        await client.query(
-          "UPDATE teams SET draws = draws + 1 WHERE id = $1",
-          [h]
-        );
-
-        await client.query(
-          "UPDATE teams SET draws = draws + 1 WHERE id = $1",
-          [a]
-        );
-      }
-    }
-
-    await client.query("COMMIT");
-  } catch (e) {
-    await client.query("ROLLBACK");
-    throw e;
-  } finally {
-    client.release();
-  }
-}
 
 /* =========================
    FRONTEND
@@ -677,22 +556,17 @@ app.get("*splat", (req, res) => {
 ========================= */
 
 initDb()
-  .then(async () => {
-    await recalculateStats();
-
-    app.listen(
-      PORT,
-      () => {
-        console.log(
-          `AliScore running on port ${PORT}`
-        );
-      }
-    );
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(
+        `AliScore running on port ${PORT}`
+      );
+    });
   })
-  .catch(err => {
+  .catch(error => {
     console.error(
-      "Database init failed:",
-      err
+      "Database error:",
+      error
     );
 
     process.exit(1);
