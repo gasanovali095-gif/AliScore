@@ -1,1 +1,248 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AliScore</title>
 
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f2f4f7;
+      color: #111;
+    }
+
+    header {
+      background: #111;
+      color: white;
+      padding: 22px;
+      text-align: center;
+      font-size: 28px;
+      font-weight: bold;
+    }
+
+    .container {
+      max-width: 650px;
+      margin: auto;
+      padding: 20px;
+    }
+
+    button {
+      width: 100%;
+      padding: 18px;
+      margin: 8px 0;
+      border: none;
+      border-radius: 14px;
+      background: #111;
+      color: white;
+      font-size: 20px;
+      font-weight: bold;
+    }
+
+    .back {
+      background: #777;
+      margin-bottom: 20px;
+    }
+
+    .card {
+      background: white;
+      padding: 20px;
+      border-radius: 16px;
+      margin-bottom: 12px;
+    }
+
+    .team {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .team-name {
+      font-size: 21px;
+      font-weight: bold;
+    }
+
+    .country {
+      color: #777;
+      margin-top: 5px;
+    }
+
+    .points {
+      font-size: 25px;
+      font-weight: bold;
+    }
+
+    h2 {
+      font-size: 28px;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
+</head>
+
+<body>
+
+<header>
+  AliScore
+</header>
+
+<div class="container">
+
+  <div id="home">
+    <button onclick="showTeams()">Takımlar</button>
+    <button onclick="showMatches()">Maçlar</button>
+    <button onclick="showTable()">Puan Durumu</button>
+  </div>
+
+  <div id="teams" class="hidden">
+
+    <button class="back" onclick="goHome()">← Geri</button>
+
+    <h2>Takımlar</h2>
+
+    <div class="card">
+      <div class="team">
+        <div>
+          <div class="team-name">Galatasaray</div>
+          <div class="country">Türkiye</div>
+        </div>
+        <div class="points">0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="team">
+        <div>
+          <div class="team-name">Fenerbahçe</div>
+          <div class="country">Türkiye</div>
+        </div>
+        <div class="points">0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="team">
+        <div>
+          <div class="team-name">Beşiktaş</div>
+          <div class="country">Türkiye</div>
+        </div>
+        <div class="points">0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="team">
+        <div>
+          <div class="team-name">Trabzonspor</div>
+          <div class="country">Türkiye</div>
+        </div>
+        <div class="points">0</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="matches" class="hidden">
+
+    <button class="back" onclick="goHome()">← Geri</button>
+
+    <h2>Maçlar</h2>
+
+    <div class="card">
+      <div class="team">
+        <div>
+          <div class="team-name">Galatasaray</div>
+          <div class="country">Fenerbahçe</div>
+        </div>
+        <div class="points">-</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="team">
+        <div>
+          <div class="team-name">Beşiktaş</div>
+          <div class="country">Trabzonspor</div>
+        </div>
+        <div class="points">-</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div id="table" class="hidden">
+
+    <button class="back" onclick="goHome()">← Geri</button>
+
+    <h2>Puan Durumu</h2>
+
+    <div class="card">
+      <div class="team">
+        <div class="team-name">1. Galatasaray</div>
+        <div class="points">0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="team">
+        <div class="team-name">2. Fenerbahçe</div>
+        <div class="points">0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="team">
+        <div class="team-name">3. Beşiktaş</div>
+        <div class="points">0</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="team">
+        <div class="team-name">4. Trabzonspor</div>
+        <div class="points">0</div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<script>
+  function hideAll() {
+    document.getElementById("home").classList.add("hidden");
+    document.getElementById("teams").classList.add("hidden");
+    document.getElementById("matches").classList.add("hidden");
+    document.getElementById("table").classList.add("hidden");
+  }
+
+  function showTeams() {
+    hideAll();
+    document.getElementById("teams").classList.remove("hidden");
+  }
+
+  function showMatches() {
+    hideAll();
+    document.getElementById("matches").classList.remove("hidden");
+  }
+
+  function showTable() {
+    hideAll();
+    document.getElementById("table").classList.remove("hidden");
+  }
+
+  function goHome() {
+    hideAll();
+    document.getElementById("home").classList.remove("hidden");
+  }
+</script>
+
+</body>
+</html>
