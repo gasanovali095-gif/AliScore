@@ -335,10 +335,11 @@ hr{
 }
 
 .notification-active{
-  background:#16834d;
+  background:#16834d!important;
 }
 
 @media(max-width:600px){
+
   .hero h1{
     font-size:38px;
   }
@@ -354,6 +355,7 @@ hr{
   .goal-admin{
     align-items:flex-start;
   }
+
 }
 </style>
 </head>
@@ -361,29 +363,87 @@ hr{
 <body>
 
 <header>
+
   <div class="nav">
-    <button onclick="showSection('home')" id="nav-home">Ana səhifə</button>
-    <button onclick="showSection('teams')" id="nav-teams">Komandalar</button>
-    <button onclick="showSection('table')" id="nav-table">Turnir cədvəli</button>
-    <button onclick="showSection('matches')" id="nav-matches">Matçlar</button>
-    <button onclick="showSection('statistics')" id="nav-statistics">Statistika</button>
-    <button onclick="showSection('teamweek')" id="nav-teamweek">⭐ Komanda həftəsi</button>
-    <button onclick="showSection('admin')" id="nav-admin">Admin</button>
+
+    <button
+      onclick="showSection('home')"
+      id="nav-home"
+    >
+      Ana səhifə
+    </button>
+
+    <button
+      onclick="showSection('teams')"
+      id="nav-teams"
+    >
+      Komandalar
+    </button>
+
+    <button
+      onclick="showSection('table')"
+      id="nav-table"
+    >
+      Turnir cədvəli
+    </button>
+
+    <button
+      onclick="showSection('matches')"
+      id="nav-matches"
+    >
+      Matçlar
+    </button>
+
+    <button
+      onclick="showSection('statistics')"
+      id="nav-statistics"
+    >
+      Statistika
+    </button>
+
+    <button
+      onclick="showSection('teamweek')"
+      id="nav-teamweek"
+    >
+      ⭐ Komanda həftəsi
+    </button>
+
+    <button
+      onclick="showSection('admin')"
+      id="nav-admin"
+    >
+      Admin
+    </button>
+
   </div>
+
 </header>
 
 <main>
 
-<section id="home" class="section active">
+<!-- =========================
+     HOME
+========================= -->
+
+<section
+  id="home"
+  class="section active"
+>
 
   <div class="hero">
+
     <div>
-      <h1>⚽ AliScore</h1>
+
+      <h1>
+        ⚽ AliScore
+      </h1>
 
       <p class="subtitle">
         Futbol komandaları, oyunçular, matçlar və statistika
       </p>
+
     </div>
+
   </div>
 
   <div class="notification-box">
@@ -397,12 +457,13 @@ hr{
     </h3>
 
     <p class="subtitle">
-      Matçlar və qollar haqqında bildiriş al.
+      Qollar haqqında real bildiriş al.
     </p>
 
     <button
       class="btn"
       id="notificationButton"
+      type="button"
       onclick="enableNotifications()"
     >
       🔔 Bildirişləri aktiv et
@@ -418,15 +479,39 @@ hr{
 </section>
 
 
-<section id="teams" class="section">
-  <h2>⚽ Komandalar</h2>
-  <div id="teamsList" class="cards"></div>
+<!-- =========================
+     TEAMS
+========================= -->
+
+<section
+  id="teams"
+  class="section"
+>
+
+  <h2>
+    ⚽ Komandalar
+  </h2>
+
+  <div
+    id="teamsList"
+    class="cards"
+  ></div>
+
 </section>
 
 
-<section id="table" class="section">
+<!-- =========================
+     TABLE
+========================= -->
 
-  <h2>🏆 Turnir cədvəli</h2>
+<section
+  id="table"
+  class="section"
+>
+
+  <h2>
+    🏆 Turnir cədvəli
+  </h2>
 
   <div class="table-wrap">
 
@@ -449,7 +534,9 @@ hr{
 
       </thead>
 
-      <tbody id="tableBody"></tbody>
+      <tbody
+        id="tableBody"
+      ></tbody>
 
     </table>
 
@@ -458,18 +545,38 @@ hr{
 </section>
 
 
-<section id="matches" class="section">
+<!-- =========================
+     MATCHES
+========================= -->
 
-  <h2>📅 Matçlar</h2>
+<section
+  id="matches"
+  class="section"
+>
 
-  <div id="matchesList"></div>
+  <h2>
+    📅 Matçlar
+  </h2>
+
+  <div
+    id="matchesList"
+  ></div>
 
 </section>
 
 
-<section id="statistics" class="section">
+<!-- =========================
+     STATISTICS
+========================= -->
 
-  <h2>📊 Statistika</h2>
+<section
+  id="statistics"
+  class="section"
+>
+
+  <h2>
+    📊 Statistika
+  </h2>
 
   <div
     id="statisticsList"
@@ -479,16 +586,34 @@ hr{
 </section>
 
 
-<section id="teamweek" class="section">
+<!-- =========================
+     TEAM OF WEEK
+========================= -->
 
-  <h2>⭐ Komanda həftəsi</h2>
+<section
+  id="teamweek"
+  class="section"
+>
 
-  <div id="teamWeekPublic"></div>
+  <h2>
+    ⭐ Komanda həftəsi
+  </h2>
+
+  <div
+    id="teamWeekPublic"
+  ></div>
 
 </section>
 
 
-<section id="admin" class="section">
+<!-- =========================
+     ADMIN
+========================= -->
+
+<section
+  id="admin"
+  class="section"
+>
 
   <div id="adminLogin">
 
@@ -496,7 +621,9 @@ hr{
 
       <div class="admin-box">
 
-        <h2>🔐 Admin</h2>
+        <h2>
+          🔐 Admin
+        </h2>
 
         <input
           id="adminPassword"
@@ -513,7 +640,9 @@ hr{
           Daxil ol
         </button>
 
-        <p id="loginMessage"></p>
+        <p
+          id="loginMessage"
+        ></p>
 
       </div>
 
@@ -522,7 +651,10 @@ hr{
   </div>
 
 
-  <div id="adminPanel" class="hidden">
+  <div
+    id="adminPanel"
+    class="hidden"
+  >
 
     <div class="admin-box">
 
@@ -535,7 +667,9 @@ hr{
         "
       >
 
-        <h2>⚙️ Admin panel</h2>
+        <h2>
+          ⚙️ Admin panel
+        </h2>
 
         <button
           class="btn btn-danger"
@@ -553,7 +687,9 @@ hr{
 
     <div class="admin-box">
 
-      <h3>🏟️ Komandalar</h3>
+      <h3>
+        🏟️ Komandalar
+      </h3>
 
       <div class="form-row">
 
@@ -578,7 +714,9 @@ hr{
         Komanda əlavə et
       </button>
 
-      <div id="adminTeamsList"></div>
+      <div
+        id="adminTeamsList"
+      ></div>
 
     </div>
 
@@ -587,7 +725,9 @@ hr{
 
     <div class="admin-box">
 
-      <h3>👤 Oyunçular</h3>
+      <h3>
+        👤 Oyunçular
+      </h3>
 
       <div class="form-row">
 
@@ -602,7 +742,9 @@ hr{
           placeholder="Nömrə"
         >
 
-        <select id="newPlayerPosition">
+        <select
+          id="newPlayerPosition"
+        >
 
           <option value="">
             Mövqe seç
@@ -626,8 +768,9 @@ hr{
 
         </select>
 
-
-        <select id="newPlayerTeam">
+        <select
+          id="newPlayerTeam"
+        >
 
           <option value="">
             Komanda seç
@@ -637,9 +780,7 @@ hr{
 
       </div>
 
-
       <br>
-
 
       <div class="photo-admin">
 
@@ -676,7 +817,6 @@ hr{
 
       </div>
 
-
       <br>
 
       <button
@@ -686,7 +826,9 @@ hr{
         Oyunçu əlavə et
       </button>
 
-      <div id="adminPlayersList"></div>
+      <div
+        id="adminPlayersList"
+      ></div>
 
     </div>
 
@@ -695,24 +837,34 @@ hr{
 
     <div class="admin-box">
 
-      <h3>⭐ Komanda həftəsi</h3>
+      <h3>
+        ⭐ Komanda həftəsi
+      </h3>
 
       <div class="form-row">
 
         <select id="weekGoalkeeper">
-          <option value="">Qapıçı seç</option>
+          <option value="">
+            Qapıçı seç
+          </option>
         </select>
 
         <select id="weekDefender">
-          <option value="">Müdafiəçi seç</option>
+          <option value="">
+            Müdafiəçi seç
+          </option>
         </select>
 
         <select id="weekMidfielder">
-          <option value="">Yarımmüdafiəçi seç</option>
+          <option value="">
+            Yarımmüdafiəçi seç
+          </option>
         </select>
 
         <select id="weekAttacker">
-          <option value="">Hücumçu seç</option>
+          <option value="">
+            Hücumçu seç
+          </option>
         </select>
 
       </div>
@@ -733,16 +885,22 @@ hr{
 
     <div class="admin-box">
 
-      <h3>⚽ Matçlar</h3>
+      <h3>
+        ⚽ Matçlar
+      </h3>
 
       <div class="form-row">
 
         <select id="matchHomeTeam">
-          <option value="">Ev sahibi</option>
+          <option value="">
+            Ev sahibi
+          </option>
         </select>
 
         <select id="matchAwayTeam">
-          <option value="">Qonaq</option>
+          <option value="">
+            Qonaq
+          </option>
         </select>
 
         <input
@@ -775,7 +933,9 @@ hr{
         Matç əlavə et
       </button>
 
-      <div id="adminMatchesList"></div>
+      <div
+        id="adminMatchesList"
+      ></div>
 
     </div>
 
@@ -788,6 +948,10 @@ hr{
 
 <script>
 
+/* =========================
+   GLOBAL DATA
+========================= */
+
 let teams = [];
 let players = [];
 let matches = [];
@@ -796,8 +960,67 @@ let teamWeek = null;
 
 
 /* =========================
-   NOTIFICATIONS
+   REAL WEB PUSH
 ========================= */
+
+function urlBase64ToUint8Array(base64String){
+
+  const padding =
+    "=".repeat(
+      (4 - base64String.length % 4) % 4
+    );
+
+  const base64 =
+    (base64String + padding)
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+
+  const rawData =
+    atob(base64);
+
+  return Uint8Array.from(
+    [...rawData].map(
+      char =>
+        char.charCodeAt(0)
+    )
+  );
+
+}
+
+
+async function registerPushServiceWorker(){
+
+  if(
+    !("serviceWorker" in navigator)
+  ){
+
+    throw new Error(
+      "Service Worker dəstəklənmir."
+    );
+
+  }
+
+  if(
+    !("PushManager" in window)
+  ){
+
+    throw new Error(
+      "Bu brauzer Push bildirişlərini dəstəkləmir."
+    );
+
+  }
+
+  const registration =
+    await navigator.serviceWorker.register(
+      "/service-worker.js"
+    );
+
+  await navigator.serviceWorker.ready;
+
+  return registration;
+
+}
+
 
 async function enableNotifications(){
 
@@ -811,75 +1034,202 @@ async function enableNotifications(){
       "notificationStatus"
     );
 
+  try{
 
-  if(!("Notification" in window)){
+    if(!("Notification" in window)){
+
+      throw new Error(
+        "Bu cihaz bildirişləri dəstəkləmir."
+      );
+
+    }
+
+    if(
+      !("serviceWorker" in navigator)
+    ){
+
+      throw new Error(
+        "Service Worker dəstəklənmir."
+      );
+
+    }
+
+    if(
+      !("PushManager" in window)
+    ){
+
+      throw new Error(
+        "Bu brauzer Push bildirişlərini dəstəkləmir."
+      );
+
+    }
+
 
     status.textContent =
-      "Bu cihaz bildirişləri dəstəkləmir.";
+      "⏳ Bildiriş icazəsi gözlənilir...";
 
-    return;
-  }
-
-
-  try{
 
     const permission =
       await Notification.requestPermission();
 
 
-    if(permission === "granted"){
+    if(permission !== "granted"){
 
-      button.textContent =
-        "✅ Bildirişlər aktivdir";
+      if(permission === "denied"){
 
-      button.classList.add(
-        "notification-active"
-      );
+        button.textContent =
+          "🔕 Bildirişlər bloklanıb";
 
-      status.textContent =
-        "AliScore bildiriş göndərə bilər.";
+        status.textContent =
+          "Bildirişlər telefon ayarlarında bloklanıb.";
+
+      }else{
+
+        button.textContent =
+          "🔔 Bildirişləri aktiv et";
+
+        status.textContent =
+          "Bildiriş icazəsi verilmədi.";
+
+      }
+
+      return;
+
+    }
 
 
-      new Notification(
-        "⚽ AliScore",
+    status.textContent =
+      "⏳ Push sistemi qoşulur...";
+
+
+    const registration =
+      await registerPushServiceWorker();
+
+
+    const keyResponse =
+      await fetch(
+        "/api/push/public-key",
         {
-          body:
-            "Bildirişlər uğurla aktiv edildi!"
+          cache:"no-store"
         }
       );
 
 
-    }else if(permission === "denied"){
+    const keyData =
+      await keyResponse.json();
 
-      button.textContent =
-        "🔕 Bildirişlər bloklanıb";
 
-      status.textContent =
-        "Bildirişlər telefon ayarlarında bloklanıb.";
+    if(!keyResponse.ok){
 
-    }else{
-
-      button.textContent =
-        "🔔 Bildirişləri aktiv et";
-
-      status.textContent =
-        "Bildiriş icazəsi verilmədi.";
+      throw new Error(
+        keyData.error ||
+        "Push açarı alınmadı."
+      );
 
     }
 
-  }catch(error){
 
-    console.error(error);
+    if(
+      !keyData.publicKey
+    ){
+
+      throw new Error(
+        "VAPID public key tapılmadı."
+      );
+
+    }
+
+
+    let subscription =
+      await registration.pushManager.getSubscription();
+
+
+    if(!subscription){
+
+      subscription =
+        await registration.pushManager.subscribe({
+
+          userVisibleOnly:true,
+
+          applicationServerKey:
+            urlBase64ToUint8Array(
+              keyData.publicKey
+            )
+
+        });
+
+    }
+
+
+    const saveResponse =
+      await fetch(
+        "/api/push/subscribe",
+        {
+          method:"POST",
+
+          headers:{
+            "Content-Type":
+              "application/json"
+          },
+
+          body:
+            JSON.stringify(
+              subscription
+            )
+
+        }
+      );
+
+
+    const saveData =
+      await saveResponse.json();
+
+
+    if(!saveResponse.ok){
+
+      throw new Error(
+        saveData.error ||
+        "Push abunəliyi yadda saxlanmadı."
+      );
+
+    }
+
+
+    button.textContent =
+      "✅ Bildirişlər aktivdir";
+
+    button.classList.add(
+      "notification-active"
+    );
 
     status.textContent =
-      "Bildirişləri aktiv etmək mümkün olmadı.";
+      "🔔 AliScore bildirişləri aktivdir.";
+
+  }catch(error){
+
+    console.error(
+      "PUSH ERROR:",
+      error
+    );
+
+    status.textContent =
+      "❌ " +
+      (
+        error.message ||
+        "Bildirişləri aktiv etmək mümkün olmadı."
+      );
+
+    alert(
+      error.message ||
+      "Bildirişləri aktiv etmək mümkün olmadı."
+    );
 
   }
 
 }
 
 
-function checkNotifications(){
+async function checkNotifications(){
 
   const button =
     document.getElementById(
@@ -892,31 +1242,31 @@ function checkNotifications(){
     );
 
 
-  if(!button || !status){
-    return;
-  }
-
-
   if(
-    "Notification" in window &&
-    Notification.permission === "granted"
+    !button ||
+    !status
   ){
 
-    button.textContent =
-      "✅ Bildirişlər aktivdir";
-
-    button.classList.add(
-      "notification-active"
-    );
-
-    status.textContent =
-      "Bildirişlər aktivdir.";
+    return;
 
   }
 
+
   if(
-    "Notification" in window &&
-    Notification.permission === "denied"
+    !("Notification" in window)
+  ){
+
+    status.textContent =
+      "Bu cihaz bildirişləri dəstəkləmir.";
+
+    return;
+
+  }
+
+
+  if(
+    Notification.permission ===
+    "denied"
   ){
 
     button.textContent =
@@ -924,6 +1274,76 @@ function checkNotifications(){
 
     status.textContent =
       "Bildirişlər telefon ayarlarında bloklanıb.";
+
+    return;
+
+  }
+
+
+  if(
+    Notification.permission !==
+    "granted"
+  ){
+
+    return;
+
+  }
+
+
+  try{
+
+    const registration =
+      await registerPushServiceWorker();
+
+
+    const subscription =
+      await registration.pushManager.getSubscription();
+
+
+    if(subscription){
+
+      const saveResponse =
+        await fetch(
+          "/api/push/subscribe",
+          {
+            method:"POST",
+
+            headers:{
+              "Content-Type":
+                "application/json"
+            },
+
+            body:
+              JSON.stringify(
+                subscription
+              )
+
+          }
+        );
+
+
+      if(saveResponse.ok){
+
+        button.textContent =
+          "✅ Bildirişlər aktivdir";
+
+        button.classList.add(
+          "notification-active"
+        );
+
+        status.textContent =
+          "🔔 AliScore bildirişləri aktivdir.";
+
+      }
+
+    }
+
+  }catch(error){
+
+    console.error(
+      "PUSH CHECK ERROR:",
+      error
+    );
 
   }
 
@@ -944,7 +1364,6 @@ function escapeHtml(value){
     return "";
 
   }
-
 
   return String(value)
 
@@ -1005,8 +1424,10 @@ function photoPlaceholder(name){
   `;
 
 
-  return "data:image/svg+xml;charset=UTF-8," +
-    encodeURIComponent(svg);
+  return (
+    "data:image/svg+xml;charset=UTF-8," +
+    encodeURIComponent(svg)
+  );
 
 }
 
@@ -1025,7 +1446,6 @@ function getPlayerPhoto(player){
     return player.photo;
 
   }
-
 
   return photoPlaceholder(
     player
@@ -1098,21 +1518,17 @@ function showSection(section){
     renderTeams();
   }
 
-
   if(section === "table"){
     renderTable();
   }
-
 
   if(section === "matches"){
     renderMatches();
   }
 
-
   if(section === "statistics"){
     renderStatistics();
   }
-
 
   if(section === "teamweek"){
     renderTeamWeek();
@@ -1147,7 +1563,6 @@ async function loadTeams(){
     teams =
       await response.json();
 
-
   }catch(error){
 
     console.error(error);
@@ -1180,7 +1595,6 @@ async function loadPlayers(){
 
     players =
       await response.json();
-
 
   }catch(error){
 
@@ -1215,7 +1629,6 @@ async function loadMatches(){
     matches =
       await response.json();
 
-
   }catch(error){
 
     console.error(error);
@@ -1249,7 +1662,6 @@ async function loadStatistics(){
     statistics =
       await response.json();
 
-
   }catch(error){
 
     console.error(error);
@@ -1282,7 +1694,6 @@ async function loadTeamWeek(){
 
     teamWeek =
       await response.json();
-
 
   }catch(error){
 
@@ -1325,7 +1736,6 @@ async function loadAll(){
   renderStatistics();
 
   renderTeamWeek();
-
 
   fillTeamSelects();
 
@@ -1787,12 +2197,12 @@ function renderMatches(){
 
 
       const date =
-        match.date
+        match.match_date
 
         ?
 
         new Date(
-          match.date
+          match.match_date
         ).toLocaleString(
           "az-AZ"
         )
@@ -1815,7 +2225,6 @@ function renderMatches(){
             )}
           </div>
 
-
           <strong>
             ${escapeHtml(
               home
@@ -1823,7 +2232,6 @@ function renderMatches(){
                 : "Home"
             )}
           </strong>
-
 
           <span
             style="
@@ -1842,7 +2250,6 @@ function renderMatches(){
             )}
 
           </span>
-
 
           <strong>
             ${escapeHtml(
@@ -1930,7 +2337,6 @@ function renderStatistics(){
               )}"
             >
 
-
             <div>
 
               <div class="player-name">
@@ -1940,7 +2346,6 @@ function renderStatistics(){
                 )}
 
               </div>
-
 
               <div class="player-meta">
 
@@ -1956,9 +2361,7 @@ function renderStatistics(){
 
           </div>
 
-
           <hr>
-
 
           <div class="stats-grid">
 
@@ -1976,7 +2379,6 @@ function renderStatistics(){
 
             </div>
 
-
             <div>
 
               <div class="player-meta">
@@ -1991,7 +2393,6 @@ function renderStatistics(){
 
             </div>
 
-
             <div>
 
               <div class="player-meta">
@@ -2005,7 +2406,6 @@ function renderStatistics(){
               </strong>
 
             </div>
-
 
             <div>
 
@@ -2142,7 +2542,6 @@ function renderTeamWeek(){
                     )}"
                   >
 
-
                   <h3
                     style="
                       margin-top:12px;
@@ -2153,7 +2552,6 @@ function renderTeamWeek(){
 
                   </h3>
 
-
                   <div class="player-name">
 
                     ${escapeHtml(
@@ -2161,7 +2559,6 @@ function renderTeamWeek(){
                     )}
 
                   </div>
-
 
                   <div class="player-meta">
 
@@ -2172,7 +2569,6 @@ function renderTeamWeek(){
                     )}
 
                   </div>
-
 
                   <div class="player-meta">
 
@@ -2274,11 +2670,9 @@ async function loginAdmin(){
 
     await loadAll();
 
-
   }catch(error){
 
     console.error(error);
-
 
     message.textContent =
       "Server xətası.";
@@ -2422,7 +2816,6 @@ function renderAdminTeams(){
             )}"
           >
 
-
           <input
             id="team-logo-${team.id}"
             value="${escapeHtml(
@@ -2433,32 +2826,19 @@ function renderAdminTeams(){
 
         </div>
 
-
         <br>
-
 
         <button
           class="btn"
-          onclick="
-            saveTeam(
-              ${team.id}
-            )
-          "
+          onclick="saveTeam(${team.id})"
         >
           Saxla
         </button>
 
-
         <button
           class="btn btn-danger"
-          onclick="
-            deleteTeam(
-              ${team.id}
-            )
-          "
-          style="
-            margin-left:8px;
-          "
+          onclick="deleteTeam(${team.id})"
+          style="margin-left:8px;"
         >
           Sil
         </button>
@@ -2552,7 +2932,6 @@ async function addTeam(){
 
     renderAdminTeams();
 
-
   }catch(error){
 
     console.error(error);
@@ -2638,7 +3017,6 @@ async function saveTeam(id){
 
     renderAdminTeams();
 
-
   }catch(error){
 
     console.error(error);
@@ -2697,13 +3075,11 @@ async function deleteTeam(id){
 
     fillTeamSelects();
 
-
     renderTeams();
 
     renderAdminTeams();
 
     renderAdminPlayers();
-
 
   }catch(error){
 
@@ -2746,6 +3122,7 @@ function compressImage(file){
 
               let width =
                 img.width;
+
 
               let height =
                 img.height;
@@ -2794,6 +3171,7 @@ function compressImage(file){
 
               canvas.width =
                 width;
+
 
               canvas.height =
                 height;
@@ -2925,13 +3303,10 @@ function previewNewPlayerPhoto(){
       "Yalnız şəkil seçmək olar."
     );
 
-
     input.value = "";
-
 
     preview.src =
       photoPlaceholder("");
-
 
     return;
 
@@ -3176,7 +3551,6 @@ async function addPlayer(){
       "Oyunçu əlavə edildi."
     );
 
-
   }catch(error){
 
     console.error(error);
@@ -3248,7 +3622,6 @@ function renderAdminPlayers(){
               )}"
             >
 
-
             <div>
 
               <div class="player-name">
@@ -3258,7 +3631,6 @@ function renderAdminPlayers(){
                 )}
 
               </div>
-
 
               <div class="player-meta">
 
@@ -3282,7 +3654,10 @@ function renderAdminPlayers(){
             <div class="goal-admin-count">
 
               ⚽ Qollar:
-              <span id="goal-count-${player.id}">
+
+              <span
+                id="goal-count-${player.id}"
+              >
                 ${Number(
                   player.goals || 0
                 )}
@@ -3638,7 +4013,6 @@ async function addPlayerGoal(id){
 
     renderPlayersAfterChange();
 
-
   }catch(error){
 
     console.error(error);
@@ -3711,7 +4085,6 @@ async function removePlayerGoal(id){
 
 
     renderPlayersAfterChange();
-
 
   }catch(error){
 
@@ -3872,7 +4245,6 @@ async function savePlayer(id){
       "Oyunçu saxlanıldı."
     );
 
-
   }catch(error){
 
     console.error(error);
@@ -3934,9 +4306,7 @@ function previewPlayerPhoto(id){
       "Zəhmət olmasa şəkil seç."
     );
 
-
     input.value = "";
-
 
     return;
 
@@ -4087,7 +4457,6 @@ async function savePlayerPhoto(id){
       "📷 Oyunçu fotosu əlavə edildi."
     );
 
-
   }catch(error){
 
     console.error(error);
@@ -4165,7 +4534,6 @@ async function removePlayerPhoto(id){
       "Foto silindi."
     );
 
-
   }catch(error){
 
     console.error(error);
@@ -4225,7 +4593,6 @@ async function deletePlayer(id){
 
 
     renderPlayersAfterChange();
-
 
   }catch(error){
 
@@ -4508,7 +4875,6 @@ async function saveTeamWeek(){
       "⭐ Komanda həftəsi saxlanıldı."
     );
 
-
   }catch(error){
 
     console.error(error);
@@ -4572,19 +4938,15 @@ function renderAdminMatches(){
 
           </strong>
 
-
           ${Number(
             match.home_score || 0
           )}
 
-
           :
-
 
           ${Number(
             match.away_score || 0
           )}
-
 
           <strong>
 
@@ -4596,9 +4958,7 @@ function renderAdminMatches(){
 
           </strong>
 
-
           <br><br>
-
 
           <button
             class="btn btn-danger"
@@ -4753,7 +5113,6 @@ async function addMatch(){
       "Matç əlavə edildi."
     );
 
-
   }catch(error){
 
     console.error(error);
@@ -4819,7 +5178,6 @@ async function deleteMatch(id){
 
     renderAdminMatches();
 
-
   }catch(error){
 
     console.error(error);
@@ -4858,7 +5216,7 @@ document.addEventListener(
     await loadAll();
 
 
-    checkNotifications();
+    await checkNotifications();
 
 
     showSection(
