@@ -3,6 +3,7 @@ const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 const { Pool } = require("pg");
 const path = require("path");
+const webpush = require("web-push");
 
 const app = express();
 
@@ -19,10 +20,37 @@ const DATABASE_URL = process.env.DATABASE_URL;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const JWT_SECRET = process.env.JWT_SECRET;
 
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
+const VAPID_SUBJECT =
+  process.env.VAPID_SUBJECT || "mailto:aliscore@example.com";
+
 const pool = new Pool({
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
+
+/* =========================
+   WEB PUSH
+========================= */
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  try {
+    webpush.setVapidDetails(
+      VAPID_SUBJECT,
+      VAPID_PUBLIC_KEY,
+      VAPID_PRIVATE_KEY
+    );
+
+    console.log("Web Push configured");
+  } catch (error) {
+    console.error("WEB PUSH CONFIG ERROR:", error);
+  }
+} else {
+  console.warn(
+    "Web Push is not configured. VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY missing."
+  );
+}
 
 /* =========================
    DATABASE
@@ -82,6 +110,20 @@ async function initDatabase() {
       player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
       position TEXT DEFAULT '',
       created_at TIMESTAMP DEFAULT NOW()
+    )
+  `);
+
+  /* =========================
+     PUSH SUBSCRIPTIONS
+  ========================= */
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS push_subscriptions (
+      id SERIAL PRIMARY KEY,
+      endpoint TEXT NOT NULL UNIQUE,
+      p256dh TEXT NOT NULL,
+      auth TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
@@ -181,6 +223,232 @@ async function initDatabase() {
 }
 
 /* =========================
+   SEND PUSH NOTIFICATION
+========================= */
+
+async function sendPushNotification(payload) {
+
+  if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
+    console.log("Push skipped: VAPID keys are missing.");
+    return;
+  }
+
+  try {
+
+    const result = await pool.query(`
+      SELECT
+        id,
+        endpoint,
+        p256dh,
+        auth
+      FROM push_subscriptions
+    `);
+
+    if (!result.rows.length) {
+      console.log("Push skipped: no subscribers.");
+      return;
+    }
+
+    await Promise.all(
+      result.rows.map(async (subscriptionRow) => {
+
+        const subscription = {
+          endpoint: subscriptionRow.endpoint,
+          keys: {
+            p256dh: subscriptionRow.p256dh,
+            auth: subscriptionRow.auth
+          }
+        };
+
+        try {
+
+          await webpush.sendNotification(
+            subscription,
+            JSON.stringify(payload),
+            {
+              TTL: 60,
+              urgency: "high"
+            }
+          );
+
+          console.log(
+            "Push sent:",
+            subscriptionRow.endpoint.substring(0, 50)
+          );
+
+        } catch (error) {
+
+          console.error(
+            "PUSH SEND ERROR:",
+            error.statusCode,
+            error.message
+          );
+
+          /*
+             404 and 410 mean that the subscription
+             is no longer valid.
+          */
+
+          if (
+            error.statusCode === 404 ||
+            error.statusCode === 410
+          ) {
+
+            await pool.query(
+              "DELETE FROM push_subscriptions WHERE id=$1",
+              [subscriptionRow.id]
+            );
+
+            console.log(
+              "Removed expired push subscription:",
+              subscriptionRow.id
+            );
+          }
+
+        }
+
+      })
+    );
+
+  } catch (error) {
+
+    console.error(
+      "PUSH NOTIFICATION ERROR:",
+      error
+    );
+
+  }
+
+}
+
+/* =========================
+   PUSH PUBLIC KEY
+========================= */
+
+app.get("/api/push/public-key", (req, res) => {
+
+  if (!VAPID_PUBLIC_KEY) {
+
+    return res.status(503).json({
+      error: "Push notifications are not configured"
+    });
+
+  }
+
+  res.json({
+    publicKey: VAPID_PUBLIC_KEY
+  });
+
+});
+
+/* =========================
+   SAVE PUSH SUBSCRIPTION
+========================= */
+
+app.post("/api/push/subscribe", async (req, res) => {
+
+  try {
+
+    const subscription = req.body;
+
+    if (
+      !subscription ||
+      !subscription.endpoint ||
+      !subscription.keys ||
+      !subscription.keys.p256dh ||
+      !subscription.keys.auth
+    ) {
+
+      return res.status(400).json({
+        error: "Invalid push subscription"
+      });
+
+    }
+
+    await pool.query(
+      `
+        INSERT INTO push_subscriptions
+        (
+          endpoint,
+          p256dh,
+          auth
+        )
+        VALUES ($1,$2,$3)
+        ON CONFLICT(endpoint)
+        DO UPDATE SET
+          p256dh=EXCLUDED.p256dh,
+          auth=EXCLUDED.auth
+      `,
+      [
+        subscription.endpoint,
+        subscription.keys.p256dh,
+        subscription.keys.auth
+      ]
+    );
+
+    res.json({
+      ok: true
+    });
+
+  } catch (error) {
+
+    console.error(
+      "PUSH SUBSCRIBE ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Could not save push subscription"
+    });
+
+  }
+
+});
+
+/* =========================
+   REMOVE PUSH SUBSCRIPTION
+========================= */
+
+app.delete("/api/push/subscribe", async (req, res) => {
+
+  try {
+
+    const endpoint =
+      String(req.body?.endpoint || "").trim();
+
+    if (!endpoint) {
+
+      return res.status(400).json({
+        error: "Endpoint is required"
+      });
+
+    }
+
+    await pool.query(
+      "DELETE FROM push_subscriptions WHERE endpoint=$1",
+      [endpoint]
+    );
+
+    res.json({
+      ok: true
+    });
+
+  } catch (error) {
+
+    console.error(
+      "PUSH UNSUBSCRIBE ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Could not remove push subscription"
+    });
+
+  }
+
+});
+
+/* =========================
    ADMIN AUTH
 ========================= */
 
@@ -209,6 +477,7 @@ function requireAdmin(req, res, next) {
     });
 
   }
+
 }
 
 /* =========================
@@ -734,9 +1003,44 @@ app.post(
 
       }
 
+      const player = result.rows[0];
+
+      /* =========================
+         GET TEAM NAME
+      ========================= */
+
+      const teamResult = await pool.query(
+        `SELECT name
+         FROM teams
+         WHERE id=$1`,
+        [player.team_id]
+      );
+
+      const teamName =
+        teamResult.rows.length
+          ? teamResult.rows[0].name
+          : "";
+
+      /* =========================
+         SEND PUSH
+      ========================= */
+
+      sendPushNotification({
+        title: "⚽ AliScore",
+        body: teamName
+          ? `${player.name} (${teamName}) qol vurdu!`
+          : `${player.name} qol vurdu!`,
+        url: "/"
+      }).catch(error => {
+        console.error(
+          "PUSH GOAL ERROR:",
+          error
+        );
+      });
+
       res.json({
         ok: true,
-        player: result.rows[0]
+        player
       });
 
     } catch (error) {
