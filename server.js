@@ -94,13 +94,19 @@ async function initDatabase() {
     )
   `);
 
+  /* =========================
+     PLAYER STAT COLUMNS
+  ========================= */
+
   await pool.query(`
     ALTER TABLE players
     ADD COLUMN IF NOT EXISTS goals INTEGER DEFAULT 0,
     ADD COLUMN IF NOT EXISTS assists INTEGER DEFAULT 0,
     ADD COLUMN IF NOT EXISTS saves INTEGER DEFAULT 0,
     ADD COLUMN IF NOT EXISTS rating INTEGER DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS photo TEXT DEFAULT ''
+    ADD COLUMN IF NOT EXISTS photo TEXT DEFAULT '',
+    ADD COLUMN IF NOT EXISTS yellow_cards INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS red_cards INTEGER DEFAULT 0
   `);
 
   await pool.query(`
@@ -208,8 +214,21 @@ async function initDatabase() {
 
       await pool.query(
         `INSERT INTO players
-        (name, number, position, team_id, goals, assists, saves, rating, photo)
-        VALUES ($1,0,'',$2,0,0,0,0,'')`,
+        (
+          name,
+          number,
+          position,
+          team_id,
+          goals,
+          assists,
+          saves,
+          rating,
+          photo,
+          yellow_cards,
+          red_cards
+        )
+        VALUES
+        ($1,0,'',$2,0,0,0,0,'',0,0)`,
         [
           player[0],
           ids[player[1]]
@@ -283,11 +302,6 @@ async function sendPushNotification(payload) {
             error.statusCode,
             error.message
           );
-
-          /*
-             404 and 410 mean that the subscription
-             is no longer valid.
-          */
 
           if (
             error.statusCode === 404 ||
@@ -734,6 +748,8 @@ app.get("/api/players", async (req, res) => {
         COALESCE(players.saves,0) AS saves,
         COALESCE(players.rating,0) AS rating,
         COALESCE(players.photo,'') AS photo,
+        COALESCE(players.yellow_cards,0) AS yellow_cards,
+        COALESCE(players.red_cards,0) AS red_cards,
         teams.name AS team_name
       FROM players
       JOIN teams ON teams.id = players.team_id
@@ -773,7 +789,9 @@ app.get("/api/teams/:id/players", async (req, res) => {
         COALESCE(assists,0) AS assists,
         COALESCE(saves,0) AS saves,
         COALESCE(rating,0) AS rating,
-        COALESCE(photo,'') AS photo
+        COALESCE(photo,'') AS photo,
+        COALESCE(yellow_cards,0) AS yellow_cards,
+        COALESCE(red_cards,0) AS red_cards
        FROM players
        WHERE team_id=$1
        ORDER BY id`,
@@ -811,7 +829,9 @@ app.post("/api/players", requireAdmin, async (req, res) => {
       assists = 0,
       saves = 0,
       rating = 0,
-      photo = ""
+      photo = "",
+      yellow_cards = 0,
+      red_cards = 0
     } = req.body;
 
     const safeRating = Math.max(
@@ -854,9 +874,11 @@ app.post("/api/players", requireAdmin, async (req, res) => {
         assists,
         saves,
         rating,
-        photo
+        photo,
+        yellow_cards,
+        red_cards
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
       RETURNING *`,
       [
         name,
@@ -867,7 +889,9 @@ app.post("/api/players", requireAdmin, async (req, res) => {
         Number(assists) || 0,
         Number(saves) || 0,
         safeRating,
-        safePhoto
+        safePhoto,
+        Math.max(0, Number(yellow_cards) || 0),
+        Math.max(0, Number(red_cards) || 0)
       ]
     );
 
@@ -901,7 +925,9 @@ app.put("/api/players/:id", requireAdmin, async (req, res) => {
       goals = 0,
       assists = 0,
       saves = 0,
-      rating = 0
+      rating = 0,
+      yellow_cards = 0,
+      red_cards = 0
     } = req.body;
 
     const safeRating = Math.max(
@@ -918,8 +944,10 @@ app.put("/api/players/:id", requireAdmin, async (req, res) => {
         goals=$5,
         assists=$6,
         saves=$7,
-        rating=$8
-      WHERE id=$9
+        rating=$8,
+        yellow_cards=$9,
+        red_cards=$10
+      WHERE id=$11
       RETURNING *`,
       [
         name,
@@ -930,6 +958,8 @@ app.put("/api/players/:id", requireAdmin, async (req, res) => {
         Number(assists) || 0,
         Number(saves) || 0,
         safeRating,
+        Math.max(0, Number(yellow_cards) || 0),
+        Math.max(0, Number(red_cards) || 0),
         Number(req.params.id)
       ]
     );
@@ -991,7 +1021,9 @@ app.post(
            COALESCE(assists,0) AS assists,
            COALESCE(saves,0) AS saves,
            COALESCE(rating,0) AS rating,
-           COALESCE(photo,'') AS photo`,
+           COALESCE(photo,'') AS photo,
+           COALESCE(yellow_cards,0) AS yellow_cards,
+           COALESCE(red_cards,0) AS red_cards`,
         [playerId]
       );
 
@@ -1005,10 +1037,6 @@ app.post(
 
       const player = result.rows[0];
 
-      /* =========================
-         GET TEAM NAME
-      ========================= */
-
       const teamResult = await pool.query(
         `SELECT name
          FROM teams
@@ -1020,10 +1048,6 @@ app.post(
         teamResult.rows.length
           ? teamResult.rows[0].name
           : "";
-
-      /* =========================
-         SEND PUSH
-      ========================= */
 
       sendPushNotification({
         title: "⚽ AliScore",
@@ -1091,7 +1115,9 @@ app.delete(
            COALESCE(assists,0) AS assists,
            COALESCE(saves,0) AS saves,
            COALESCE(rating,0) AS rating,
-           COALESCE(photo,'') AS photo`,
+           COALESCE(photo,'') AS photo,
+           COALESCE(yellow_cards,0) AS yellow_cards,
+           COALESCE(red_cards,0) AS red_cards`,
         [playerId]
       );
 
@@ -1114,6 +1140,342 @@ app.delete(
 
       res.status(500).json({
         error: "Could not remove goal"
+      });
+
+    }
+
+  }
+);
+
+/* =========================
+   ADD YELLOW CARD
+========================= */
+
+app.post(
+  "/api/players/:id/yellow-card",
+  requireAdmin,
+  async (req, res) => {
+
+    try {
+
+      const playerId = Number(req.params.id);
+
+      if (!Number.isInteger(playerId) || playerId <= 0) {
+
+        return res.status(400).json({
+          error: "Invalid player id"
+        });
+
+      }
+
+      const result = await pool.query(
+        `UPDATE players
+         SET yellow_cards = COALESCE(yellow_cards,0) + 1
+         WHERE id=$1
+         RETURNING
+           id,
+           name,
+           number,
+           position,
+           team_id,
+           COALESCE(goals,0) AS goals,
+           COALESCE(assists,0) AS assists,
+           COALESCE(saves,0) AS saves,
+           COALESCE(rating,0) AS rating,
+           COALESCE(photo,'') AS photo,
+           COALESCE(yellow_cards,0) AS yellow_cards,
+           COALESCE(red_cards,0) AS red_cards`,
+        [playerId]
+      );
+
+      if (!result.rows.length) {
+
+        return res.status(404).json({
+          error: "Player not found"
+        });
+
+      }
+
+      const player = result.rows[0];
+
+      const teamResult = await pool.query(
+        `SELECT name
+         FROM teams
+         WHERE id=$1`,
+        [player.team_id]
+      );
+
+      const teamName =
+        teamResult.rows.length
+          ? teamResult.rows[0].name
+          : "";
+
+      sendPushNotification({
+        title: "🟨 AliScore",
+        body: teamName
+          ? `${player.name} (${teamName}) sarı kart aldı!`
+          : `${player.name} sarı kart aldı!`,
+        url: "/"
+      }).catch(error => {
+        console.error(
+          "PUSH YELLOW CARD ERROR:",
+          error
+        );
+      });
+
+      res.json({
+        ok: true,
+        player
+      });
+
+    } catch (error) {
+
+      console.error(
+        "ADD YELLOW CARD ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not add yellow card"
+      });
+
+    }
+
+  }
+);
+
+/* =========================
+   REMOVE YELLOW CARD
+========================= */
+
+app.delete(
+  "/api/players/:id/yellow-card",
+  requireAdmin,
+  async (req, res) => {
+
+    try {
+
+      const playerId = Number(req.params.id);
+
+      if (!Number.isInteger(playerId) || playerId <= 0) {
+
+        return res.status(400).json({
+          error: "Invalid player id"
+        });
+
+      }
+
+      const result = await pool.query(
+        `UPDATE players
+         SET yellow_cards =
+           GREATEST(COALESCE(yellow_cards,0) - 1, 0)
+         WHERE id=$1
+         RETURNING
+           id,
+           name,
+           number,
+           position,
+           team_id,
+           COALESCE(goals,0) AS goals,
+           COALESCE(assists,0) AS assists,
+           COALESCE(saves,0) AS saves,
+           COALESCE(rating,0) AS rating,
+           COALESCE(photo,'') AS photo,
+           COALESCE(yellow_cards,0) AS yellow_cards,
+           COALESCE(red_cards,0) AS red_cards`,
+        [playerId]
+      );
+
+      if (!result.rows.length) {
+
+        return res.status(404).json({
+          error: "Player not found"
+        });
+
+      }
+
+      res.json({
+        ok: true,
+        player: result.rows[0]
+      });
+
+    } catch (error) {
+
+      console.error(
+        "REMOVE YELLOW CARD ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not remove yellow card"
+      });
+
+    }
+
+  }
+);
+
+/* =========================
+   ADD RED CARD
+========================= */
+
+app.post(
+  "/api/players/:id/red-card",
+  requireAdmin,
+  async (req, res) => {
+
+    try {
+
+      const playerId = Number(req.params.id);
+
+      if (!Number.isInteger(playerId) || playerId <= 0) {
+
+        return res.status(400).json({
+          error: "Invalid player id"
+        });
+
+      }
+
+      const result = await pool.query(
+        `UPDATE players
+         SET red_cards = COALESCE(red_cards,0) + 1
+         WHERE id=$1
+         RETURNING
+           id,
+           name,
+           number,
+           position,
+           team_id,
+           COALESCE(goals,0) AS goals,
+           COALESCE(assists,0) AS assists,
+           COALESCE(saves,0) AS saves,
+           COALESCE(rating,0) AS rating,
+           COALESCE(photo,'') AS photo,
+           COALESCE(yellow_cards,0) AS yellow_cards,
+           COALESCE(red_cards,0) AS red_cards`,
+        [playerId]
+      );
+
+      if (!result.rows.length) {
+
+        return res.status(404).json({
+          error: "Player not found"
+        });
+
+      }
+
+      const player = result.rows[0];
+
+      const teamResult = await pool.query(
+        `SELECT name
+         FROM teams
+         WHERE id=$1`,
+        [player.team_id]
+      );
+
+      const teamName =
+        teamResult.rows.length
+          ? teamResult.rows[0].name
+          : "";
+
+      sendPushNotification({
+        title: "🟥 AliScore",
+        body: teamName
+          ? `${player.name} (${teamName}) qırmızı kart aldı!`
+          : `${player.name} qırmızı kart aldı!`,
+        url: "/"
+      }).catch(error => {
+        console.error(
+          "PUSH RED CARD ERROR:",
+          error
+        );
+      });
+
+      res.json({
+        ok: true,
+        player
+      });
+
+    } catch (error) {
+
+      console.error(
+        "ADD RED CARD ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not add red card"
+      });
+
+    }
+
+  }
+);
+
+/* =========================
+   REMOVE RED CARD
+========================= */
+
+app.delete(
+  "/api/players/:id/red-card",
+  requireAdmin,
+  async (req, res) => {
+
+    try {
+
+      const playerId = Number(req.params.id);
+
+      if (!Number.isInteger(playerId) || playerId <= 0) {
+
+        return res.status(400).json({
+          error: "Invalid player id"
+        });
+
+      }
+
+      const result = await pool.query(
+        `UPDATE players
+         SET red_cards =
+           GREATEST(COALESCE(red_cards,0) - 1, 0)
+         WHERE id=$1
+         RETURNING
+           id,
+           name,
+           number,
+           position,
+           team_id,
+           COALESCE(goals,0) AS goals,
+           COALESCE(assists,0) AS assists,
+           COALESCE(saves,0) AS saves,
+           COALESCE(rating,0) AS rating,
+           COALESCE(photo,'') AS photo,
+           COALESCE(yellow_cards,0) AS yellow_cards,
+           COALESCE(red_cards,0) AS red_cards`,
+        [playerId]
+      );
+
+      if (!result.rows.length) {
+
+        return res.status(404).json({
+          error: "Player not found"
+        });
+
+      }
+
+      res.json({
+        ok: true,
+        player: result.rows[0]
+      });
+
+    } catch (error) {
+
+      console.error(
+        "REMOVE RED CARD ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not remove red card"
       });
 
     }
@@ -1300,12 +1662,16 @@ app.get("/api/statistics", async (req, res) => {
         COALESCE(players.assists,0) AS assists,
         COALESCE(players.saves,0) AS saves,
         COALESCE(players.rating,0) AS rating,
-        COALESCE(players.photo,'') AS photo
+        COALESCE(players.photo,'') AS photo,
+        COALESCE(players.yellow_cards,0) AS yellow_cards,
+        COALESCE(players.red_cards,0) AS red_cards
       FROM players
       JOIN teams ON teams.id = players.team_id
       ORDER BY
         players.goals DESC,
         players.assists DESC,
+        players.yellow_cards ASC,
+        players.red_cards ASC,
         players.id ASC
     `);
 
@@ -1337,7 +1703,9 @@ app.put(
       const {
         goals = 0,
         assists = 0,
-        saves = 0
+        saves = 0,
+        yellow_cards = 0,
+        red_cards = 0
       } = req.body;
 
       const safeGoals = Math.max(
@@ -1355,17 +1723,31 @@ app.put(
         Number(saves) || 0
       );
 
+      const safeYellowCards = Math.max(
+        0,
+        Number(yellow_cards) || 0
+      );
+
+      const safeRedCards = Math.max(
+        0,
+        Number(red_cards) || 0
+      );
+
       const result = await pool.query(
         `UPDATE players SET
           goals=$1,
           assists=$2,
-          saves=$3
-        WHERE id=$4
+          saves=$3,
+          yellow_cards=$4,
+          red_cards=$5
+        WHERE id=$6
         RETURNING *`,
         [
           safeGoals,
           safeAssists,
           safeSaves,
+          safeYellowCards,
+          safeRedCards,
           Number(req.params.id)
         ]
       );
@@ -1524,6 +1906,8 @@ app.get(
           players.saves,
           players.rating,
           players.photo,
+          players.yellow_cards,
+          players.red_cards,
           players.team_id,
 
           teams.name AS team_name
