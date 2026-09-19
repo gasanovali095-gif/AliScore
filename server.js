@@ -7,48 +7,31 @@ const webpush = require("web-push");
 
 const app = express();
 
-/* =========================
-   SETTINGS
-========================= */
-
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
 
-const PORT = process.env.PORT || 10000;
-
+const PORT = process.env.PORT || 3000;
 const DATABASE_URL = process.env.DATABASE_URL;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-const JWT_SECRET = process.env.JWT_SECRET;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "1234";
+const JWT_SECRET = process.env.JWT_SECRET || "aliscore-secret";
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY;
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY;
 const VAPID_SUBJECT =
-  process.env.VAPID_SUBJECT || "mailto:aliscore@example.com";
+  process.env.VAPID_SUBJECT || "mailto:admin@aliscore.app";
 
 const pool = new Pool({
   connectionString: DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+  ssl: {
+    rejectUnauthorized: false
+  }
 });
 
-/* =========================
-   WEB PUSH
-========================= */
-
 if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
-  try {
-    webpush.setVapidDetails(
-      VAPID_SUBJECT,
-      VAPID_PUBLIC_KEY,
-      VAPID_PRIVATE_KEY
-    );
-
-    console.log("Web Push configured");
-  } catch (error) {
-    console.error("WEB PUSH CONFIG ERROR:", error);
-  }
-} else {
-  console.warn(
-    "Web Push is not configured. VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY missing."
+  webpush.setVapidDetails(
+    VAPID_SUBJECT,
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY
   );
 }
 
@@ -57,65 +40,106 @@ if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
 ========================= */
 
 async function initDatabase() {
+  /* =========================
+     TEAMS
+  ========================= */
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS teams (
       id SERIAL PRIMARY KEY,
-      name TEXT NOT NULL,
-      points INTEGER DEFAULT 0,
-      played INTEGER DEFAULT 0,
-      wins INTEGER DEFAULT 0,
-      draws INTEGER DEFAULT 0,
-      losses INTEGER DEFAULT 0,
-      goal_difference INTEGER DEFAULT 0
+      name TEXT NOT NULL UNIQUE,
+      logo TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  /* =========================
+     MATCHES
+  ========================= */
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS matches (
       id SERIAL PRIMARY KEY,
-      match_date TEXT,
-      home_team_id INTEGER,
-      away_team_id INTEGER,
-      home_score INTEGER DEFAULT 0,
-      away_score INTEGER DEFAULT 0,
-      created_at TIMESTAMP DEFAULT NOW()
+      home_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+      away_team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+      home_score INTEGER NOT NULL DEFAULT 0,
+      away_score INTEGER NOT NULL DEFAULT 0,
+      match_date TIMESTAMPTZ,
+      status TEXT DEFAULT 'scheduled',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+
+  /* =========================
+     PLAYERS
+  ========================= */
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS players (
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL,
-      number INTEGER DEFAULT 0,
-      position TEXT DEFAULT '',
-      team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
-      created_at TIMESTAMP DEFAULT NOW()
+      team_id INTEGER REFERENCES teams(id) ON DELETE CASCADE,
+      position TEXT,
+      number INTEGER,
+      goals INTEGER NOT NULL DEFAULT 0,
+      assists INTEGER NOT NULL DEFAULT 0,
+      saves INTEGER NOT NULL DEFAULT 0,
+      rating NUMERIC DEFAULT 0,
+      photo TEXT,
+      yellow_cards INTEGER NOT NULL DEFAULT 0,
+      red_cards INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
-  /* =========================
-     PLAYER STAT COLUMNS
-  ========================= */
+  await pool.query(`
+    ALTER TABLE players
+    ADD COLUMN IF NOT EXISTS goals INTEGER NOT NULL DEFAULT 0
+  `);
 
   await pool.query(`
     ALTER TABLE players
-    ADD COLUMN IF NOT EXISTS goals INTEGER DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS assists INTEGER DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS saves INTEGER DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS rating INTEGER DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS photo TEXT DEFAULT '',
-    ADD COLUMN IF NOT EXISTS yellow_cards INTEGER DEFAULT 0,
-    ADD COLUMN IF NOT EXISTS red_cards INTEGER DEFAULT 0
+    ADD COLUMN IF NOT EXISTS assists INTEGER NOT NULL DEFAULT 0
   `);
+
+  await pool.query(`
+    ALTER TABLE players
+    ADD COLUMN IF NOT EXISTS saves INTEGER NOT NULL DEFAULT 0
+  `);
+
+  await pool.query(`
+    ALTER TABLE players
+    ADD COLUMN IF NOT EXISTS rating NUMERIC DEFAULT 0
+  `);
+
+  await pool.query(`
+    ALTER TABLE players
+    ADD COLUMN IF NOT EXISTS photo TEXT
+  `);
+
+  await pool.query(`
+    ALTER TABLE players
+    ADD COLUMN IF NOT EXISTS yellow_cards INTEGER NOT NULL DEFAULT 0
+  `);
+
+  await pool.query(`
+    ALTER TABLE players
+    ADD COLUMN IF NOT EXISTS red_cards INTEGER NOT NULL DEFAULT 0
+  `);
+
+  /* =========================
+     TEAM OF WEEK
+  ========================= */
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS team_of_week (
       id SERIAL PRIMARY KEY,
-      week_start DATE NOT NULL,
-      player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
-      position TEXT DEFAULT '',
-      created_at TIMESTAMP DEFAULT NOW()
+      week TEXT NOT NULL,
+      goalkeeper_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+      defender_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+      midfielder_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+      attacker_id INTEGER REFERENCES players(id) ON DELETE SET NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
 
@@ -134,32 +158,47 @@ async function initDatabase() {
   `);
 
   /* =========================
+     TRANSFERS
+  ========================= */
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS transfers (
+      id SERIAL PRIMARY KEY,
+      player_id INTEGER NOT NULL REFERENCES players(id) ON DELETE CASCADE,
+      from_team_id INTEGER REFERENCES teams(id) ON DELETE SET NULL,
+      to_team_id INTEGER NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+      fee NUMERIC DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  /* =========================
      SEED TEAMS
   ========================= */
 
-  const count = await pool.query(
-    "SELECT COUNT(*)::int AS count FROM teams"
-  );
+  const teamsCount = await pool.query(`
+    SELECT COUNT(*)::int AS count
+    FROM teams
+  `);
 
-  if (count.rows[0].count === 0) {
-
+  if (teamsCount.rows[0].count === 0) {
     const teams = [
-      "Lotu pişiklər",
-      "MSN FK",
-      "Neweli FK",
-      "Xirdalan United",
-      "Xirdalan Wolves"
+      "Real Madrid",
+      "Barcelona",
+      "Manchester City",
+      "Liverpool",
+      "Fenerbahçe"
     ];
 
-    for (const name of teams) {
-
+    for (const team of teams) {
       await pool.query(
-        `INSERT INTO teams
-        (name, points, played, wins, draws, losses, goal_difference)
-        VALUES ($1,0,0,0,0,0,0)`,
-        [name]
+        `
+        INSERT INTO teams (name)
+        VALUES ($1)
+        ON CONFLICT (name) DO NOTHING
+        `,
+        [team]
       );
-
     }
   }
 
@@ -167,202 +206,126 @@ async function initDatabase() {
      SEED PLAYERS
   ========================= */
 
-  const playersCount = await pool.query(
-    "SELECT COUNT(*)::int AS count FROM players"
-  );
+  const playersCount = await pool.query(`
+    SELECT COUNT(*)::int AS count
+    FROM players
+  `);
 
   if (playersCount.rows[0].count === 0) {
+    const teams = await pool.query(`
+      SELECT id, name
+      FROM teams
+      ORDER BY id
+    `);
 
-    const teams = await pool.query(
-      "SELECT id, name FROM teams"
-    );
-
-    const ids = {};
+    const teamMap = {};
 
     for (const team of teams.rows) {
-      ids[team.name] = team.id;
+      teamMap[team.name] = team.id;
     }
 
     const players = [
-      ["Kamran", "Lotu pişiklər"],
-      ["Minə", "Lotu pişiklər"],
-      ["Ramil", "Lotu pişiklər"],
-      ["Huseyin", "Lotu pişiklər"],
+      ["Thibaut Courtois", teamMap["Real Madrid"], "Qapıçı", 1],
+      ["Vinicius Junior", teamMap["Real Madrid"], "Hücum", 7],
+      ["Jude Bellingham", teamMap["Real Madrid"], "Yarımmüdafiə", 5],
+      ["Kylian Mbappe", teamMap["Real Madrid"], "Hücum", 9],
 
-      ["Fuad", "MSN FK"],
-      ["Murad", "MSN FK"],
-      ["Ayxan", "MSN FK"],
-      ["Şahin", "MSN FK"],
+      ["Marc-Andre ter Stegen", teamMap["Barcelona"], "Qapıçı", 1],
+      ["Lamine Yamal", teamMap["Barcelona"], "Hücum", 10],
+      ["Pedri", teamMap["Barcelona"], "Yarımmüdafiə", 8],
+      ["Raphinha", teamMap["Barcelona"], "Hücum", 11],
 
-      ["Tofik", "Neweli FK"],
-      ["Arda", "Neweli FK"],
-      ["Veli", "Neweli FK"],
-      ["Emil", "Neweli FK"],
+      ["Ederson", teamMap["Manchester City"], "Qapıçı", 31],
+      ["Erling Haaland", teamMap["Manchester City"], "Hücum", 9],
+      ["Phil Foden", teamMap["Manchester City"], "Yarımmüdafiə", 47],
+      ["Kevin De Bruyne", teamMap["Manchester City"], "Yarımmüdafiə", 17],
 
-      ["Amil", "Xirdalan United"],
-      ["Elmir", "Xirdalan United"],
-      ["İsa", "Xirdalan United"],
-      ["Ümüd", "Xirdalan United"],
+      ["Alisson Becker", teamMap["Liverpool"], "Qapıçı", 1],
+      ["Mohamed Salah", teamMap["Liverpool"], "Hücum", 11],
+      ["Virgil van Dijk", teamMap["Liverpool"], "Müdafiə", 4],
+      ["Luis Diaz", teamMap["Liverpool"], "Hücum", 7],
 
-      ["Ali", "Xirdalan Wolves"],
-      ["Emin", "Xirdalan Wolves"],
-      ["Huseyin (2 blok)", "Xirdalan Wolves"],
-      ["Raul", "Xirdalan Wolves"]
+      ["Dominik Livakovic", teamMap["Fenerbahçe"], "Qapıçı", 40],
+      ["Edin Dzeko", teamMap["Fenerbahçe"], "Hücum", 9],
+      ["Fred", teamMap["Fenerbahçe"], "Yarımmüdafiə", 13],
+      ["Dusan Tadic", teamMap["Fenerbahçe"], "Yarımmüdafiə", 10]
     ];
 
     for (const player of players) {
-
       await pool.query(
-        `INSERT INTO players
-        (
-          name,
-          number,
-          position,
-          team_id,
-          goals,
-          assists,
-          saves,
-          rating,
-          photo,
-          yellow_cards,
-          red_cards
-        )
-        VALUES
-        ($1,0,'',$2,0,0,0,0,'',0,0)`,
-        [
-          player[0],
-          ids[player[1]]
-        ]
+        `
+        INSERT INTO players
+        (name, team_id, position, number)
+        VALUES ($1, $2, $3, $4)
+        `,
+        player
       );
-
     }
   }
-
-  console.log("Database initialized");
 }
 
 /* =========================
-   SEND PUSH NOTIFICATION
+   PUSH NOTIFICATION
 ========================= */
 
 async function sendPushNotification(payload) {
-
   if (!VAPID_PUBLIC_KEY || !VAPID_PRIVATE_KEY) {
-    console.log("Push skipped: VAPID keys are missing.");
+    console.log("Push notifications are not configured");
     return;
   }
 
-  try {
+  const result = await pool.query(`
+    SELECT id, endpoint, p256dh, auth
+    FROM push_subscriptions
+  `);
 
-    const result = await pool.query(`
-      SELECT
-        id,
-        endpoint,
-        p256dh,
-        auth
-      FROM push_subscriptions
-    `);
-
-    if (!result.rows.length) {
-      console.log("Push skipped: no subscribers.");
-      return;
-    }
-
-    await Promise.all(
-      result.rows.map(async (subscriptionRow) => {
-
-        const subscription = {
-          endpoint: subscriptionRow.endpoint,
+  for (const subscription of result.rows) {
+    try {
+      await webpush.sendNotification(
+        {
+          endpoint: subscription.endpoint,
           keys: {
-            p256dh: subscriptionRow.p256dh,
-            auth: subscriptionRow.auth
+            p256dh: subscription.p256dh,
+            auth: subscription.auth
           }
-        };
+        },
+        JSON.stringify(payload)
+      );
+    } catch (error) {
+      console.error(
+        "PUSH ERROR:",
+        error.statusCode,
+        error.message
+      );
 
-        try {
-
-          await webpush.sendNotification(
-            subscription,
-            JSON.stringify(payload),
-            {
-              TTL: 60,
-              urgency: "high"
-            }
-          );
-
-          console.log(
-            "Push sent:",
-            subscriptionRow.endpoint.substring(0, 50)
-          );
-
-        } catch (error) {
-
-          console.error(
-            "PUSH SEND ERROR:",
-            error.statusCode,
-            error.message
-          );
-
-          if (
-            error.statusCode === 404 ||
-            error.statusCode === 410
-          ) {
-
-            await pool.query(
-              "DELETE FROM push_subscriptions WHERE id=$1",
-              [subscriptionRow.id]
-            );
-
-            console.log(
-              "Removed expired push subscription:",
-              subscriptionRow.id
-            );
-          }
-
-        }
-
-      })
-    );
-
-  } catch (error) {
-
-    console.error(
-      "PUSH NOTIFICATION ERROR:",
-      error
-    );
-
+      if (
+        error.statusCode === 404 ||
+        error.statusCode === 410
+      ) {
+        await pool.query(
+          `
+          DELETE FROM push_subscriptions
+          WHERE id=$1
+          `,
+          [subscription.id]
+        );
+      }
+    }
   }
-
 }
 
 /* =========================
-   PUSH PUBLIC KEY
+   PUSH ROUTES
 ========================= */
 
 app.get("/api/push/public-key", (req, res) => {
-
-  if (!VAPID_PUBLIC_KEY) {
-
-    return res.status(503).json({
-      error: "Push notifications are not configured"
-    });
-
-  }
-
   res.json({
-    publicKey: VAPID_PUBLIC_KEY
+    publicKey: VAPID_PUBLIC_KEY || null
   });
-
 });
 
-/* =========================
-   SAVE PUSH SUBSCRIPTION
-========================= */
-
 app.post("/api/push/subscribe", async (req, res) => {
-
   try {
-
     const subscription = req.body;
 
     if (
@@ -372,26 +335,20 @@ app.post("/api/push/subscribe", async (req, res) => {
       !subscription.keys.p256dh ||
       !subscription.keys.auth
     ) {
-
       return res.status(400).json({
-        error: "Invalid push subscription"
+        error: "Invalid subscription"
       });
-
     }
 
     await pool.query(
       `
-        INSERT INTO push_subscriptions
-        (
-          endpoint,
-          p256dh,
-          auth
-        )
-        VALUES ($1,$2,$3)
-        ON CONFLICT(endpoint)
-        DO UPDATE SET
-          p256dh=EXCLUDED.p256dh,
-          auth=EXCLUDED.auth
+      INSERT INTO push_subscriptions
+      (endpoint, p256dh, auth)
+      VALUES ($1,$2,$3)
+      ON CONFLICT (endpoint)
+      DO UPDATE SET
+        p256dh=EXCLUDED.p256dh,
+        auth=EXCLUDED.auth
       `,
       [
         subscription.endpoint,
@@ -403,63 +360,43 @@ app.post("/api/push/subscribe", async (req, res) => {
     res.json({
       ok: true
     });
-
   } catch (error) {
-
-    console.error(
-      "PUSH SUBSCRIBE ERROR:",
-      error
-    );
+    console.error("SUBSCRIBE ERROR:", error);
 
     res.status(500).json({
-      error: "Could not save push subscription"
+      error: "Could not save subscription"
     });
-
   }
-
 });
 
-/* =========================
-   REMOVE PUSH SUBSCRIPTION
-========================= */
-
 app.delete("/api/push/subscribe", async (req, res) => {
-
   try {
-
-    const endpoint =
-      String(req.body?.endpoint || "").trim();
+    const endpoint = req.body?.endpoint;
 
     if (!endpoint) {
-
       return res.status(400).json({
-        error: "Endpoint is required"
+        error: "Endpoint required"
       });
-
     }
 
     await pool.query(
-      "DELETE FROM push_subscriptions WHERE endpoint=$1",
+      `
+      DELETE FROM push_subscriptions
+      WHERE endpoint=$1
+      `,
       [endpoint]
     );
 
     res.json({
       ok: true
     });
-
   } catch (error) {
-
-    console.error(
-      "PUSH UNSUBSCRIBE ERROR:",
-      error
-    );
+    console.error("UNSUBSCRIBE ERROR:", error);
 
     res.status(500).json({
-      error: "Could not remove push subscription"
+      error: "Could not remove subscription"
     });
-
   }
-
 });
 
 /* =========================
@@ -467,105 +404,105 @@ app.delete("/api/push/subscribe", async (req, res) => {
 ========================= */
 
 function requireAdmin(req, res, next) {
-
   try {
-
-    const token = req.cookies.aliscore_admin;
+    const token = req.cookies?.admin_token;
 
     if (!token) {
-
       return res.status(401).json({
         error: "Unauthorized"
       });
-
     }
 
-    jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(
+      token,
+      JWT_SECRET
+    );
+
+    if (!decoded || decoded.role !== "admin") {
+      return res.status(401).json({
+        error: "Unauthorized"
+      });
+    }
+
+    req.admin = decoded;
 
     next();
-
-  } catch {
-
-    res.status(401).json({
+  } catch (error) {
+    return res.status(401).json({
       error: "Unauthorized"
     });
-
   }
-
 }
 
-/* =========================
-   ADMIN LOGIN
-========================= */
-
 app.post("/api/admin/login", (req, res) => {
+  const password = req.body?.password;
 
-  if (req.body.password !== ADMIN_PASSWORD) {
-
+  if (
+    !password ||
+    password !== ADMIN_PASSWORD
+  ) {
     return res.status(401).json({
       error: "Wrong password"
     });
-
   }
 
   const token = jwt.sign(
-    { admin: true },
+    {
+      role: "admin"
+    },
     JWT_SECRET,
-    { expiresIn: "7d" }
+    {
+      expiresIn: "7d"
+    }
   );
 
-  res.cookie("aliscore_admin", token, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: true,
-    maxAge: 7 * 24 * 60 * 60 * 1000
-  });
+  res.cookie(
+    "admin_token",
+    token,
+    {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 7 * 24 * 60 * 60 * 1000
+    }
+  );
 
   res.json({
     ok: true
   });
-
 });
 
-/* =========================
-   ADMIN ME
-========================= */
-
 app.get("/api/admin/me", (req, res) => {
-
   try {
+    const token = req.cookies?.admin_token;
 
-    jwt.verify(
-      req.cookies.aliscore_admin,
+    if (!token) {
+      return res.json({
+        loggedIn: false
+      });
+    }
+
+    const decoded = jwt.verify(
+      token,
       JWT_SECRET
     );
 
     res.json({
-      ok: true
+      loggedIn: decoded?.role === "admin"
     });
-
   } catch {
-
-    res.status(401).json({
-      error: "Not logged in"
+    res.json({
+      loggedIn: false
     });
-
   }
-
 });
 
-/* =========================
-   ADMIN LOGOUT
-========================= */
-
 app.post("/api/admin/logout", (req, res) => {
-
-  res.clearCookie("aliscore_admin");
+  res.clearCookie("admin_token");
 
   res.json({
     ok: true
   });
-
 });
 
 /* =========================
@@ -573,663 +510,718 @@ app.post("/api/admin/logout", (req, res) => {
 ========================= */
 
 app.get("/api/teams", async (req, res) => {
-
   try {
-
     const result = await pool.query(`
-      SELECT * FROM teams
-      ORDER BY
-        points DESC,
-        goal_difference DESC,
-        wins DESC,
-        losses ASC,
-        id ASC
+      SELECT *
+      FROM teams
+      ORDER BY name ASC
     `);
 
     res.json(result.rows);
-
   } catch (error) {
-
-    console.error(error);
+    console.error("LOAD TEAMS ERROR:", error);
 
     res.status(500).json({
       error: "Could not load teams"
     });
-
   }
-
 });
 
-app.post("/api/teams", requireAdmin, async (req, res) => {
+app.post(
+  "/api/teams",
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const name = String(
+        req.body?.name || ""
+      ).trim();
 
-  try {
+      const logo =
+        req.body?.logo || null;
 
-    const {
-      name,
-      points = 0,
-      played = 0,
-      wins = 0,
-      draws = 0,
-      losses = 0,
-      goal_difference = 0
-    } = req.body;
+      if (!name) {
+        return res.status(400).json({
+          error: "Team name required"
+        });
+      }
 
-    const result = await pool.query(
-      `INSERT INTO teams
-      (name,points,played,wins,draws,losses,goal_difference)
-      VALUES ($1,$2,$3,$4,$5,$6,$7)
-      RETURNING *`,
-      [
-        name,
-        Number(points) || 0,
-        Number(played) || 0,
-        Number(wins) || 0,
-        Number(draws) || 0,
-        Number(losses) || 0,
-        Number(goal_difference) || 0
-      ]
-    );
+      const result = await pool.query(
+        `
+        INSERT INTO teams
+        (name, logo)
+        VALUES ($1,$2)
+        RETURNING *
+        `,
+        [name, logo]
+      );
 
-    res.json(result.rows[0]);
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("CREATE TEAM ERROR:", error);
 
-  } catch (error) {
-
-    console.error(error);
-
-    res.status(500).json({
-      error: "Could not create team"
-    });
-
-  }
-
-});
-
-app.put("/api/teams/:id", requireAdmin, async (req, res) => {
-
-  try {
-
-    const {
-      name,
-      points = 0,
-      played = 0,
-      wins = 0,
-      draws = 0,
-      losses = 0,
-      goal_difference = 0
-    } = req.body;
-
-    const result = await pool.query(
-      `UPDATE teams SET
-        name=$1,
-        points=$2,
-        played=$3,
-        wins=$4,
-        draws=$5,
-        losses=$6,
-        goal_difference=$7
-      WHERE id=$8
-      RETURNING *`,
-      [
-        name,
-        Number(points) || 0,
-        Number(played) || 0,
-        Number(wins) || 0,
-        Number(draws) || 0,
-        Number(losses) || 0,
-        Number(goal_difference) || 0,
-        Number(req.params.id)
-      ]
-    );
-
-    if (!result.rows.length) {
-
-      return res.status(404).json({
-        error: "Team not found"
+      res.status(500).json({
+        error: "Could not create team"
       });
-
     }
-
-    res.json(result.rows[0]);
-
-  } catch (error) {
-
-    console.error(error);
-
-    res.status(500).json({
-      error: "Could not update team"
-    });
-
   }
+);
 
-});
+app.put(
+  "/api/teams/:id",
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const name = String(
+        req.body?.name || ""
+      ).trim();
 
-app.delete("/api/teams/:id", requireAdmin, async (req, res) => {
+      const logo =
+        req.body?.logo ?? null;
 
-  try {
+      if (!Number.isInteger(id)) {
+        return res.status(400).json({
+          error: "Invalid team id"
+        });
+      }
 
-    await pool.query(
-      "DELETE FROM teams WHERE id=$1",
-      [Number(req.params.id)]
-    );
+      if (!name) {
+        return res.status(400).json({
+          error: "Team name required"
+        });
+      }
 
-    res.json({
-      ok: true
-    });
+      const result = await pool.query(
+        `
+        UPDATE teams
+        SET name=$1,
+            logo=$2
+        WHERE id=$3
+        RETURNING *
+        `,
+        [name, logo, id]
+      );
 
-  } catch (error) {
+      if (!result.rows.length) {
+        return res.status(404).json({
+          error: "Team not found"
+        });
+      }
 
-    console.error(error);
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("UPDATE TEAM ERROR:", error);
 
-    res.status(500).json({
-      error: "Could not delete team"
-    });
-
+      res.status(500).json({
+        error: "Could not update team"
+      });
+    }
   }
+);
 
-});
+app.delete(
+  "/api/teams/:id",
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isInteger(id)) {
+        return res.status(400).json({
+          error: "Invalid team id"
+        });
+      }
+
+      await pool.query(
+        `
+        DELETE FROM teams
+        WHERE id=$1
+        `,
+        [id]
+      );
+
+      res.json({
+        ok: true
+      });
+    } catch (error) {
+      console.error("DELETE TEAM ERROR:", error);
+
+      res.status(500).json({
+        error: "Could not delete team"
+      });
+    }
+  }
+);
 
 /* =========================
    PLAYERS
 ========================= */
 
 app.get("/api/players", async (req, res) => {
-
   try {
-
     const result = await pool.query(`
       SELECT
-        players.id,
-        players.name,
-        players.number,
-        players.position,
-        players.team_id,
-        COALESCE(players.goals,0) AS goals,
-        COALESCE(players.assists,0) AS assists,
-        COALESCE(players.saves,0) AS saves,
-        COALESCE(players.rating,0) AS rating,
-        COALESCE(players.photo,'') AS photo,
-        COALESCE(players.yellow_cards,0) AS yellow_cards,
-        COALESCE(players.red_cards,0) AS red_cards,
+        players.*,
         teams.name AS team_name
       FROM players
-      JOIN teams ON teams.id = players.team_id
-      ORDER BY players.team_id, players.id
+      LEFT JOIN teams
+        ON teams.id = players.team_id
+      ORDER BY players.name ASC
     `);
 
     res.json(result.rows);
-
   } catch (error) {
-
-    console.error(error);
+    console.error("LOAD PLAYERS ERROR:", error);
 
     res.status(500).json({
       error: "Could not load players"
     });
-
   }
-
 });
 
-/* =========================
-   PLAYERS BY TEAM
-========================= */
+app.get(
+  "/api/teams/:id/players",
+  async (req, res) => {
+    try {
+      const teamId = Number(req.params.id);
 
-app.get("/api/teams/:id/players", async (req, res) => {
+      const result = await pool.query(
+        `
+        SELECT
+          players.*,
+          teams.name AS team_name
+        FROM players
+        LEFT JOIN teams
+          ON teams.id=players.team_id
+        WHERE players.team_id=$1
+        ORDER BY players.name ASC
+        `,
+        [teamId]
+      );
 
-  try {
+      res.json(result.rows);
+    } catch (error) {
+      console.error(
+        "LOAD TEAM PLAYERS ERROR:",
+        error
+      );
 
-    const result = await pool.query(
-      `SELECT
-        id,
-        name,
-        number,
-        position,
-        team_id,
-        COALESCE(goals,0) AS goals,
-        COALESCE(assists,0) AS assists,
-        COALESCE(saves,0) AS saves,
-        COALESCE(rating,0) AS rating,
-        COALESCE(photo,'') AS photo,
-        COALESCE(yellow_cards,0) AS yellow_cards,
-        COALESCE(red_cards,0) AS red_cards
-       FROM players
-       WHERE team_id=$1
-       ORDER BY id`,
-      [Number(req.params.id)]
-    );
-
-    res.json(result.rows);
-
-  } catch (error) {
-
-    console.error(error);
-
-    res.status(500).json({
-      error: "Could not load team players"
-    });
-
-  }
-
-});
-
-/* =========================
-   ADD PLAYER
-========================= */
-
-app.post("/api/players", requireAdmin, async (req, res) => {
-
-  try {
-
-    const {
-      name,
-      number = 0,
-      position = "",
-      team_id,
-      goals = 0,
-      assists = 0,
-      saves = 0,
-      rating = 0,
-      photo = "",
-      yellow_cards = 0,
-      red_cards = 0
-    } = req.body;
-
-    const safeRating = Math.max(
-      0,
-      Math.min(100, Number(rating) || 0)
-    );
-
-    const safePhoto = String(photo || "");
-
-    if (
-      safePhoto &&
-      !safePhoto.startsWith("data:image/")
-    ) {
-
-      return res.status(400).json({
-        error: "Invalid image"
+      res.status(500).json({
+        error: "Could not load players"
       });
-
     }
-
-    if (
-      safePhoto.length >
-      8 * 1024 * 1024
-    ) {
-
-      return res.status(400).json({
-        error: "Image is too large"
-      });
-
-    }
-
-    const result = await pool.query(
-      `INSERT INTO players
-      (
-        name,
-        number,
-        position,
-        team_id,
-        goals,
-        assists,
-        saves,
-        rating,
-        photo,
-        yellow_cards,
-        red_cards
-      )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
-      RETURNING *`,
-      [
-        name,
-        Number(number) || 0,
-        position,
-        Number(team_id),
-        Number(goals) || 0,
-        Number(assists) || 0,
-        Number(saves) || 0,
-        safeRating,
-        safePhoto,
-        Math.max(0, Number(yellow_cards) || 0),
-        Math.max(0, Number(red_cards) || 0)
-      ]
-    );
-
-    res.json(result.rows[0]);
-
-  } catch (error) {
-
-    console.error("ADD PLAYER ERROR:", error);
-
-    res.status(500).json({
-      error: "Could not create player"
-    });
-
   }
-
-});
-
-/* =========================
-   UPDATE PLAYER
-========================= */
-
-app.put("/api/players/:id", requireAdmin, async (req, res) => {
-
-  try {
-
-    const {
-      name,
-      number = 0,
-      position = "",
-      team_id,
-      goals = 0,
-      assists = 0,
-      saves = 0,
-      rating = 0,
-      yellow_cards = 0,
-      red_cards = 0
-    } = req.body;
-
-    const safeRating = Math.max(
-      0,
-      Math.min(100, Number(rating) || 0)
-    );
-
-    const result = await pool.query(
-      `UPDATE players SET
-        name=$1,
-        number=$2,
-        position=$3,
-        team_id=$4,
-        goals=$5,
-        assists=$6,
-        saves=$7,
-        rating=$8,
-        yellow_cards=$9,
-        red_cards=$10
-      WHERE id=$11
-      RETURNING *`,
-      [
-        name,
-        Number(number) || 0,
-        position,
-        Number(team_id),
-        Number(goals) || 0,
-        Number(assists) || 0,
-        Number(saves) || 0,
-        safeRating,
-        Math.max(0, Number(yellow_cards) || 0),
-        Math.max(0, Number(red_cards) || 0),
-        Number(req.params.id)
-      ]
-    );
-
-    if (!result.rows.length) {
-
-      return res.status(404).json({
-        error: "Player not found"
-      });
-
-    }
-
-    res.json(result.rows[0]);
-
-  } catch (error) {
-
-    console.error("UPDATE PLAYER ERROR:", error);
-
-    res.status(500).json({
-      error: "Could not update player"
-    });
-
-  }
-
-});
-
-/* =========================
-   ADD ONE GOAL TO PLAYER
-========================= */
+);
 
 app.post(
-  "/api/players/:id/goal",
+  "/api/players",
   requireAdmin,
   async (req, res) => {
-
     try {
+      const name = String(
+        req.body?.name || ""
+      ).trim();
 
-      const playerId = Number(req.params.id);
+      const teamId =
+        req.body?.team_id == null
+          ? null
+          : Number(req.body.team_id);
 
-      if (!Number.isInteger(playerId) || playerId <= 0) {
+      const position =
+        req.body?.position || null;
 
+      const number =
+        req.body?.number == null
+          ? null
+          : Number(req.body.number);
+
+      if (!name) {
         return res.status(400).json({
-          error: "Invalid player id"
+          error: "Player name required"
         });
-
       }
 
       const result = await pool.query(
-        `UPDATE players
-         SET goals = COALESCE(goals,0) + 1
-         WHERE id=$1
-         RETURNING
-           id,
-           name,
-           number,
-           position,
-           team_id,
-           COALESCE(goals,0) AS goals,
-           COALESCE(assists,0) AS assists,
-           COALESCE(saves,0) AS saves,
-           COALESCE(rating,0) AS rating,
-           COALESCE(photo,'') AS photo,
-           COALESCE(yellow_cards,0) AS yellow_cards,
-           COALESCE(red_cards,0) AS red_cards`,
-        [playerId]
+        `
+        INSERT INTO players
+        (name, team_id, position, number)
+        VALUES ($1,$2,$3,$4)
+        RETURNING *
+        `,
+        [
+          name,
+          teamId,
+          position,
+          number
+        ]
+      );
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error(
+        "CREATE PLAYER ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not create player"
+      });
+    }
+  }
+);
+
+app.put(
+  "/api/players/:id",
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+
+      const name = String(
+        req.body?.name || ""
+      ).trim();
+
+      const teamId =
+        req.body?.team_id == null
+          ? null
+          : Number(req.body.team_id);
+
+      const position =
+        req.body?.position || null;
+
+      const number =
+        req.body?.number == null
+          ? null
+          : Number(req.body.number);
+
+      if (!Number.isInteger(id)) {
+        return res.status(400).json({
+          error: "Invalid player id"
+        });
+      }
+
+      if (!name) {
+        return res.status(400).json({
+          error: "Player name required"
+        });
+      }
+
+      const result = await pool.query(
+        `
+        UPDATE players
+        SET name=$1,
+            team_id=$2,
+            position=$3,
+            number=$4
+        WHERE id=$5
+        RETURNING *
+        `,
+        [
+          name,
+          teamId,
+          position,
+          number,
+          id
+        ]
       );
 
       if (!result.rows.length) {
+        return res.status(404).json({
+          error: "Player not found"
+        });
+      }
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error(
+        "UPDATE PLAYER ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not update player"
+      });
+    }
+  }
+);
+
+app.delete(
+  "/api/players/:id",
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+
+      if (!Number.isInteger(id)) {
+        return res.status(400).json({
+          error: "Invalid player id"
+        });
+      }
+
+      await pool.query(
+        `
+        DELETE FROM players
+        WHERE id=$1
+        `,
+        [id]
+      );
+
+      res.json({
+        ok: true
+      });
+    } catch (error) {
+      console.error(
+        "DELETE PLAYER ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not delete player"
+      });
+    }
+  }
+);
+
+/* =========================
+   TRANSFERS
+========================= */
+
+app.get("/api/transfers", async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        transfers.id,
+        transfers.player_id,
+        transfers.from_team_id,
+        transfers.to_team_id,
+        transfers.fee,
+        transfers.created_at,
+
+        players.name AS player_name,
+
+        from_team.name AS from_team_name,
+        to_team.name AS to_team_name
+
+      FROM transfers
+
+      JOIN players
+        ON players.id = transfers.player_id
+
+      LEFT JOIN teams AS from_team
+        ON from_team.id = transfers.from_team_id
+
+      JOIN teams AS to_team
+        ON to_team.id = transfers.to_team_id
+
+      ORDER BY
+        transfers.created_at DESC,
+        transfers.id DESC
+    `);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error(
+      "LOAD TRANSFERS ERROR:",
+      error
+    );
+
+    res.status(500).json({
+      error: "Could not load transfers"
+    });
+  }
+});
+
+app.post(
+  "/api/transfers",
+  requireAdmin,
+  async (req, res) => {
+    const client = await pool.connect();
+
+    try {
+      const playerId =
+        Number(req.body?.player_id);
+
+      const toTeamId =
+        Number(req.body?.to_team_id);
+
+      const fee = Math.max(
+        0,
+        Number(req.body?.fee) || 0
+      );
+
+      if (
+        !Number.isInteger(playerId) ||
+        playerId <= 0 ||
+        !Number.isInteger(toTeamId) ||
+        toTeamId <= 0
+      ) {
+        return res.status(400).json({
+          error: "Invalid player or team"
+        });
+      }
+
+      await client.query("BEGIN");
+
+      const playerResult =
+        await client.query(
+          `
+          SELECT
+            players.id,
+            players.name,
+            players.team_id,
+            current_team.name AS current_team_name
+
+          FROM players
+
+          JOIN teams AS current_team
+            ON current_team.id=players.team_id
+
+          WHERE players.id=$1
+
+          FOR UPDATE
+          `,
+          [playerId]
+        );
+
+      if (!playerResult.rows.length) {
+        await client.query("ROLLBACK");
 
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
-      const player = result.rows[0];
+      const player =
+        playerResult.rows[0];
 
-      const teamResult = await pool.query(
-        `SELECT name
-         FROM teams
-         WHERE id=$1`,
-        [player.team_id]
+      if (player.team_id === toTeamId) {
+        await client.query("ROLLBACK");
+
+        return res.status(400).json({
+          error: "Player is already in this team"
+        });
+      }
+
+      const toTeamResult =
+        await client.query(
+          `
+          SELECT id, name
+          FROM teams
+          WHERE id=$1
+          `,
+          [toTeamId]
+        );
+
+      if (!toTeamResult.rows.length) {
+        await client.query("ROLLBACK");
+
+        return res.status(404).json({
+          error: "New team not found"
+        });
+      }
+
+      const newTeam =
+        toTeamResult.rows[0];
+
+      const transferResult =
+        await client.query(
+          `
+          INSERT INTO transfers
+          (
+            player_id,
+            from_team_id,
+            to_team_id,
+            fee
+          )
+          VALUES ($1,$2,$3,$4)
+
+          RETURNING
+            id,
+            player_id,
+            from_team_id,
+            to_team_id,
+            fee,
+            created_at
+          `,
+          [
+            playerId,
+            player.team_id,
+            toTeamId,
+            fee
+          ]
+        );
+
+      await client.query(
+        `
+        UPDATE players
+        SET team_id=$1
+        WHERE id=$2
+        `,
+        [
+          toTeamId,
+          playerId
+        ]
       );
 
-      const teamName =
-        teamResult.rows.length
-          ? teamResult.rows[0].name
-          : "";
+      await client.query("COMMIT");
+
+      const transfer =
+        transferResult.rows[0];
 
       sendPushNotification({
-        title: "⚽ AliScore",
-        body: teamName
-          ? `${player.name} (${teamName}) qol vurdu!`
-          : `${player.name} qol vurdu!`,
+        title: "🔄 AliScore — Yeni transfer",
+        body:
+          `${player.name} → ${newTeam.name}. ` +
+          `${player.current_team_name} → ${newTeam.name}` +
+          (fee > 0
+            ? ` • ${fee}`
+            : ""),
         url: "/"
       }).catch(error => {
         console.error(
-          "PUSH GOAL ERROR:",
+          "PUSH TRANSFER ERROR:",
           error
         );
       });
 
       res.json({
         ok: true,
-        player
+
+        transfer: {
+          ...transfer,
+          player_name: player.name,
+          from_team_name:
+            player.current_team_name,
+          to_team_name:
+            newTeam.name
+        }
       });
-
     } catch (error) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {}
 
-      console.error("ADD GOAL ERROR:", error);
+      console.error(
+        "CREATE TRANSFER ERROR:",
+        error
+      );
 
       res.status(500).json({
-        error: "Could not add goal"
+        error: "Could not create transfer"
       });
-
+    } finally {
+      client.release();
     }
-
   }
 );
 
 /* =========================
-   REMOVE ONE GOAL FROM PLAYER
+   GOALS
 ========================= */
+
+app.post(
+  "/api/players/:id/goal",
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+
+      const result = await pool.query(
+        `
+        UPDATE players
+        SET goals=goals+1
+        WHERE id=$1
+        RETURNING *
+        `,
+        [id]
+      );
+
+      if (!result.rows.length) {
+        return res.status(404).json({
+          error: "Player not found"
+        });
+      }
+
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error(
+        "ADD GOAL ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not add goal"
+      });
+    }
+  }
+);
 
 app.delete(
   "/api/players/:id/goal",
   requireAdmin,
   async (req, res) => {
-
     try {
-
-      const playerId = Number(req.params.id);
-
-      if (!Number.isInteger(playerId) || playerId <= 0) {
-
-        return res.status(400).json({
-          error: "Invalid player id"
-        });
-
-      }
+      const id = Number(req.params.id);
 
       const result = await pool.query(
-        `UPDATE players
-         SET goals = GREATEST(COALESCE(goals,0) - 1, 0)
-         WHERE id=$1
-         RETURNING
-           id,
-           name,
-           number,
-           position,
-           team_id,
-           COALESCE(goals,0) AS goals,
-           COALESCE(assists,0) AS assists,
-           COALESCE(saves,0) AS saves,
-           COALESCE(rating,0) AS rating,
-           COALESCE(photo,'') AS photo,
-           COALESCE(yellow_cards,0) AS yellow_cards,
-           COALESCE(red_cards,0) AS red_cards`,
-        [playerId]
+        `
+        UPDATE players
+        SET goals=GREATEST(goals-1,0)
+        WHERE id=$1
+        RETURNING *
+        `,
+        [id]
       );
 
       if (!result.rows.length) {
-
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
-      res.json({
-        ok: true,
-        player: result.rows[0]
-      });
-
+      res.json(result.rows[0]);
     } catch (error) {
-
-      console.error("REMOVE GOAL ERROR:", error);
+      console.error(
+        "REMOVE GOAL ERROR:",
+        error
+      );
 
       res.status(500).json({
         error: "Could not remove goal"
       });
-
     }
-
   }
 );
 
 /* =========================
-   ADD YELLOW CARD
+   YELLOW CARDS
 ========================= */
 
 app.post(
   "/api/players/:id/yellow-card",
   requireAdmin,
   async (req, res) => {
-
     try {
-
-      const playerId = Number(req.params.id);
-
-      if (!Number.isInteger(playerId) || playerId <= 0) {
-
-        return res.status(400).json({
-          error: "Invalid player id"
-        });
-
-      }
+      const id = Number(req.params.id);
 
       const result = await pool.query(
-        `UPDATE players
-         SET yellow_cards = COALESCE(yellow_cards,0) + 1
-         WHERE id=$1
-         RETURNING
-           id,
-           name,
-           number,
-           position,
-           team_id,
-           COALESCE(goals,0) AS goals,
-           COALESCE(assists,0) AS assists,
-           COALESCE(saves,0) AS saves,
-           COALESCE(rating,0) AS rating,
-           COALESCE(photo,'') AS photo,
-           COALESCE(yellow_cards,0) AS yellow_cards,
-           COALESCE(red_cards,0) AS red_cards`,
-        [playerId]
+        `
+        UPDATE players
+        SET yellow_cards=yellow_cards+1
+        WHERE id=$1
+        RETURNING *
+        `,
+        [id]
       );
 
       if (!result.rows.length) {
-
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
-      const player = result.rows[0];
-
-      const teamResult = await pool.query(
-        `SELECT name
-         FROM teams
-         WHERE id=$1`,
-        [player.team_id]
-      );
-
-      const teamName =
-        teamResult.rows.length
-          ? teamResult.rows[0].name
-          : "";
-
-      sendPushNotification({
-        title: "🟨 AliScore",
-        body: teamName
-          ? `${player.name} (${teamName}) sarı kart aldı!`
-          : `${player.name} sarı kart aldı!`,
-        url: "/"
-      }).catch(error => {
-        console.error(
-          "PUSH YELLOW CARD ERROR:",
-          error
-        );
-      });
-
-      res.json({
-        ok: true,
-        player
-      });
-
+      res.json(result.rows[0]);
     } catch (error) {
-
       console.error(
         "ADD YELLOW CARD ERROR:",
         error
@@ -1238,69 +1230,35 @@ app.post(
       res.status(500).json({
         error: "Could not add yellow card"
       });
-
     }
-
   }
 );
-
-/* =========================
-   REMOVE YELLOW CARD
-========================= */
 
 app.delete(
   "/api/players/:id/yellow-card",
   requireAdmin,
   async (req, res) => {
-
     try {
-
-      const playerId = Number(req.params.id);
-
-      if (!Number.isInteger(playerId) || playerId <= 0) {
-
-        return res.status(400).json({
-          error: "Invalid player id"
-        });
-
-      }
+      const id = Number(req.params.id);
 
       const result = await pool.query(
-        `UPDATE players
-         SET yellow_cards =
-           GREATEST(COALESCE(yellow_cards,0) - 1, 0)
-         WHERE id=$1
-         RETURNING
-           id,
-           name,
-           number,
-           position,
-           team_id,
-           COALESCE(goals,0) AS goals,
-           COALESCE(assists,0) AS assists,
-           COALESCE(saves,0) AS saves,
-           COALESCE(rating,0) AS rating,
-           COALESCE(photo,'') AS photo,
-           COALESCE(yellow_cards,0) AS yellow_cards,
-           COALESCE(red_cards,0) AS red_cards`,
-        [playerId]
+        `
+        UPDATE players
+        SET yellow_cards=GREATEST(yellow_cards-1,0)
+        WHERE id=$1
+        RETURNING *
+        `,
+        [id]
       );
 
       if (!result.rows.length) {
-
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
-      res.json({
-        ok: true,
-        player: result.rows[0]
-      });
-
+      res.json(result.rows[0]);
     } catch (error) {
-
       console.error(
         "REMOVE YELLOW CARD ERROR:",
         error
@@ -1309,95 +1267,39 @@ app.delete(
       res.status(500).json({
         error: "Could not remove yellow card"
       });
-
     }
-
   }
 );
 
 /* =========================
-   ADD RED CARD
+   RED CARDS
 ========================= */
 
 app.post(
   "/api/players/:id/red-card",
   requireAdmin,
   async (req, res) => {
-
     try {
-
-      const playerId = Number(req.params.id);
-
-      if (!Number.isInteger(playerId) || playerId <= 0) {
-
-        return res.status(400).json({
-          error: "Invalid player id"
-        });
-
-      }
+      const id = Number(req.params.id);
 
       const result = await pool.query(
-        `UPDATE players
-         SET red_cards = COALESCE(red_cards,0) + 1
-         WHERE id=$1
-         RETURNING
-           id,
-           name,
-           number,
-           position,
-           team_id,
-           COALESCE(goals,0) AS goals,
-           COALESCE(assists,0) AS assists,
-           COALESCE(saves,0) AS saves,
-           COALESCE(rating,0) AS rating,
-           COALESCE(photo,'') AS photo,
-           COALESCE(yellow_cards,0) AS yellow_cards,
-           COALESCE(red_cards,0) AS red_cards`,
-        [playerId]
+        `
+        UPDATE players
+        SET red_cards=red_cards+1
+        WHERE id=$1
+        RETURNING *
+        `,
+        [id]
       );
 
       if (!result.rows.length) {
-
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
-      const player = result.rows[0];
-
-      const teamResult = await pool.query(
-        `SELECT name
-         FROM teams
-         WHERE id=$1`,
-        [player.team_id]
-      );
-
-      const teamName =
-        teamResult.rows.length
-          ? teamResult.rows[0].name
-          : "";
-
-      sendPushNotification({
-        title: "🟥 AliScore",
-        body: teamName
-          ? `${player.name} (${teamName}) qırmızı kart aldı!`
-          : `${player.name} qırmızı kart aldı!`,
-        url: "/"
-      }).catch(error => {
-        console.error(
-          "PUSH RED CARD ERROR:",
-          error
-        );
-      });
-
-      res.json({
-        ok: true,
-        player
-      });
-
+      res.json(result.rows[0]);
     } catch (error) {
-
       console.error(
         "ADD RED CARD ERROR:",
         error
@@ -1406,69 +1308,35 @@ app.post(
       res.status(500).json({
         error: "Could not add red card"
       });
-
     }
-
   }
 );
-
-/* =========================
-   REMOVE RED CARD
-========================= */
 
 app.delete(
   "/api/players/:id/red-card",
   requireAdmin,
   async (req, res) => {
-
     try {
-
-      const playerId = Number(req.params.id);
-
-      if (!Number.isInteger(playerId) || playerId <= 0) {
-
-        return res.status(400).json({
-          error: "Invalid player id"
-        });
-
-      }
+      const id = Number(req.params.id);
 
       const result = await pool.query(
-        `UPDATE players
-         SET red_cards =
-           GREATEST(COALESCE(red_cards,0) - 1, 0)
-         WHERE id=$1
-         RETURNING
-           id,
-           name,
-           number,
-           position,
-           team_id,
-           COALESCE(goals,0) AS goals,
-           COALESCE(assists,0) AS assists,
-           COALESCE(saves,0) AS saves,
-           COALESCE(rating,0) AS rating,
-           COALESCE(photo,'') AS photo,
-           COALESCE(yellow_cards,0) AS yellow_cards,
-           COALESCE(red_cards,0) AS red_cards`,
-        [playerId]
+        `
+        UPDATE players
+        SET red_cards=GREATEST(red_cards-1,0)
+        WHERE id=$1
+        RETURNING *
+        `,
+        [id]
       );
 
       if (!result.rows.length) {
-
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
-      res.json({
-        ok: true,
-        player: result.rows[0]
-      });
-
+      res.json(result.rows[0]);
     } catch (error) {
-
       console.error(
         "REMOVE RED CARD ERROR:",
         error
@@ -1477,725 +1345,465 @@ app.delete(
       res.status(500).json({
         error: "Could not remove red card"
       });
-
     }
-
   }
 );
 
 /* =========================
-   PLAYER PHOTO
+   PHOTO
 ========================= */
 
 app.put(
   "/api/players/:id/photo",
   requireAdmin,
   async (req, res) => {
-
     try {
-
-      const photo = String(
-        req.body?.photo || ""
-      );
-
-      if (
-        photo &&
-        !photo.startsWith("data:image/")
-      ) {
-
-        return res.status(400).json({
-          error: "Invalid image"
-        });
-
-      }
-
-      if (
-        photo.length >
-        8 * 1024 * 1024
-      ) {
-
-        return res.status(400).json({
-          error: "Image is too large"
-        });
-
-      }
+      const id = Number(req.params.id);
+      const photo = req.body?.photo || null;
 
       const result = await pool.query(
-        `UPDATE players
-         SET photo=$1
-         WHERE id=$2
-         RETURNING *`,
-        [
-          photo,
-          Number(req.params.id)
-        ]
+        `
+        UPDATE players
+        SET photo=$1
+        WHERE id=$2
+        RETURNING *
+        `,
+        [photo, id]
       );
 
-      if (!result.rowCount) {
-
+      if (!result.rows.length) {
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
       res.json(result.rows[0]);
-
     } catch (error) {
-
       console.error(
-        "PHOTO ERROR:",
+        "UPDATE PHOTO ERROR:",
         error
       );
 
       res.status(500).json({
-        error: "Could not update player photo"
+        error: "Could not update photo"
       });
-
     }
-
   }
 );
 
 /* =========================
-   PLAYER RATING
+   RATING
 ========================= */
 
 app.put(
   "/api/players/:id/rating",
   requireAdmin,
   async (req, res) => {
-
     try {
-
-      const rating = Math.max(
-        0,
-        Math.min(
-          100,
-          Number(req.body?.rating) || 0
-        )
+      const id = Number(req.params.id);
+      const rating = Number(
+        req.body?.rating
       );
+
+      if (!Number.isFinite(rating)) {
+        return res.status(400).json({
+          error: "Invalid rating"
+        });
+      }
 
       const result = await pool.query(
-        `UPDATE players
-         SET rating=$1
-         WHERE id=$2
-         RETURNING *`,
-        [
-          rating,
-          Number(req.params.id)
-        ]
+        `
+        UPDATE players
+        SET rating=$1
+        WHERE id=$2
+        RETURNING *
+        `,
+        [rating, id]
       );
 
-      if (!result.rowCount) {
-
+      if (!result.rows.length) {
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
       res.json(result.rows[0]);
-
     } catch (error) {
-
       console.error(
-        "RATING ERROR:",
+        "UPDATE RATING ERROR:",
         error
       );
 
       res.status(500).json({
-        error: "Could not update player rating"
+        error: "Could not update rating"
       });
-
     }
-
   }
 );
 
 /* =========================
-   DELETE PLAYER
+   STATISTICS
 ========================= */
 
-app.delete("/api/players/:id", requireAdmin, async (req, res) => {
+app.get(
+  "/api/statistics",
+  async (req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT
+          players.*,
+          teams.name AS team_name
+        FROM players
+        LEFT JOIN teams
+          ON teams.id=players.team_id
+        ORDER BY
+          players.rating DESC,
+          players.goals DESC,
+          players.assists DESC
+      `);
 
-  try {
+      res.json(result.rows);
+    } catch (error) {
+      console.error(
+        "LOAD STATISTICS ERROR:",
+        error
+      );
 
-    await pool.query(
-      "DELETE FROM players WHERE id=$1",
-      [Number(req.params.id)]
-    );
-
-    res.json({
-      ok: true
-    });
-
-  } catch (error) {
-
-    console.error(error);
-
-    res.status(500).json({
-      error: "Could not delete player"
-    });
-
+      res.status(500).json({
+        error: "Could not load statistics"
+      });
+    }
   }
-
-});
-
-/* =========================
-   PLAYER STATISTICS
-========================= */
-
-app.get("/api/statistics", async (req, res) => {
-
-  try {
-
-    const result = await pool.query(`
-      SELECT
-        players.id,
-        players.name,
-        players.number,
-        players.position,
-        players.team_id,
-        teams.name AS team_name,
-        COALESCE(players.goals,0) AS goals,
-        COALESCE(players.assists,0) AS assists,
-        COALESCE(players.saves,0) AS saves,
-        COALESCE(players.rating,0) AS rating,
-        COALESCE(players.photo,'') AS photo,
-        COALESCE(players.yellow_cards,0) AS yellow_cards,
-        COALESCE(players.red_cards,0) AS red_cards
-      FROM players
-      JOIN teams ON teams.id = players.team_id
-      ORDER BY
-        players.goals DESC,
-        players.assists DESC,
-        players.yellow_cards ASC,
-        players.red_cards ASC,
-        players.id ASC
-    `);
-
-    res.json(result.rows);
-
-  } catch (error) {
-
-    console.error(error);
-
-    res.status(500).json({
-      error: "Could not load statistics"
-    });
-
-  }
-
-});
-
-/* =========================
-   UPDATE PLAYER STATS
-========================= */
+);
 
 app.put(
   "/api/players/:id/stats",
   requireAdmin,
   async (req, res) => {
-
     try {
+      const id = Number(req.params.id);
 
-      const {
-        goals = 0,
-        assists = 0,
-        saves = 0,
-        yellow_cards = 0,
-        red_cards = 0
-      } = req.body;
+      const goals =
+        Math.max(
+          0,
+          Number(req.body?.goals) || 0
+        );
 
-      const safeGoals = Math.max(
-        0,
-        Number(goals) || 0
-      );
+      const assists =
+        Math.max(
+          0,
+          Number(req.body?.assists) || 0
+        );
 
-      const safeAssists = Math.max(
-        0,
-        Number(assists) || 0
-      );
+      const saves =
+        Math.max(
+          0,
+          Number(req.body?.saves) || 0
+        );
 
-      const safeSaves = Math.max(
-        0,
-        Number(saves) || 0
-      );
-
-      const safeYellowCards = Math.max(
-        0,
-        Number(yellow_cards) || 0
-      );
-
-      const safeRedCards = Math.max(
-        0,
-        Number(red_cards) || 0
-      );
+      const rating =
+        Math.max(
+          0,
+          Number(req.body?.rating) || 0
+        );
 
       const result = await pool.query(
-        `UPDATE players SET
+        `
+        UPDATE players
+        SET
           goals=$1,
           assists=$2,
           saves=$3,
-          yellow_cards=$4,
-          red_cards=$5
-        WHERE id=$6
-        RETURNING *`,
+          rating=$4
+        WHERE id=$5
+        RETURNING *
+        `,
         [
-          safeGoals,
-          safeAssists,
-          safeSaves,
-          safeYellowCards,
-          safeRedCards,
-          Number(req.params.id)
+          goals,
+          assists,
+          saves,
+          rating,
+          id
         ]
       );
 
       if (!result.rows.length) {
-
         return res.status(404).json({
           error: "Player not found"
         });
-
       }
 
       res.json(result.rows[0]);
-
     } catch (error) {
-
-      console.error(error);
+      console.error(
+        "UPDATE STATS ERROR:",
+        error
+      );
 
       res.status(500).json({
-        error: "Could not update statistics"
+        error: "Could not update stats"
       });
-
     }
-
   }
 );
 
 /* =========================
-   POSITION NORMALIZATION
+   POSITION
 ========================= */
 
 function normalizePosition(position) {
+  if (!position) return "";
 
-  return String(position || "")
-    .trim()
-    .toLowerCase()
-    .replaceAll("ə", "e")
-    .replaceAll("ı", "i")
-    .replaceAll("ö", "o")
-    .replaceAll("ü", "u")
-    .replaceAll("ş", "s")
-    .replaceAll("ç", "c")
-    .replaceAll("ğ", "g");
+  const value = String(
+    position
+  ).trim().toLowerCase();
 
+  if (
+    value === "qapıçı" ||
+    value === "qapici" ||
+    value === "goalkeeper" ||
+    value === "gk"
+  ) {
+    return "Qapıçı";
+  }
+
+  if (
+    value === "müdafiə" ||
+    value === "mudafie" ||
+    value === "defender" ||
+    value === "df"
+  ) {
+    return "Müdafiə";
+  }
+
+  if (
+    value === "yarımmüdafiə" ||
+    value === "yarimmudafie" ||
+    value === "midfielder" ||
+    value === "mf"
+  ) {
+    return "Yarımmüdafiə";
+  }
+
+  if (
+    value === "hücum" ||
+    value === "hücumçu" ||
+    value === "hücumçu" ||
+    value === "forvard" ||
+    value === "attacker" ||
+    value === "forward" ||
+    value === "fw"
+  ) {
+    return "Hücum";
+  }
+
+  return position;
 }
 
 function getPositionGroup(position) {
+  const normalized =
+    normalizePosition(position);
 
-  const p = normalizePosition(position);
-
-  if (
-    p.includes("qapici") ||
-    p.includes("goalkeeper") ||
-    p === "gk" ||
-    p === "keeper"
-  ) {
-
-    return "Qapıçı";
-
+  if (normalized === "Qapıçı") {
+    return "goalkeeper";
   }
 
-  if (
-    p.includes("mudafie") ||
-    p.includes("defender") ||
-    p.includes("defence") ||
-    p === "df" ||
-    p === "cb" ||
-    p === "lb" ||
-    p === "rb"
-  ) {
-
-    return "Müdafiə";
-
+  if (normalized === "Müdafiə") {
+    return "defender";
   }
 
-  if (
-    p.includes("yarim") ||
-    p.includes("midfield") ||
-    p === "mf" ||
-    p === "cm" ||
-    p === "dm" ||
-    p === "am"
-  ) {
-
-    return "Yarımmüdafiə";
-
+  if (normalized === "Yarımmüdafiə") {
+    return "midfielder";
   }
 
-  if (
-    p.includes("hucum") ||
-    p.includes("forvard") ||
-    p.includes("forward") ||
-    p.includes("attack") ||
-    p === "fw" ||
-    p === "st" ||
-    p === "cf"
-  ) {
-
-    return "Hücum";
-
+  if (normalized === "Hücum") {
+    return "attacker";
   }
 
-  return "Digər";
-
+  return "";
 }
 
 /* =========================
-   TEAM OF THE WEEK
+   TEAM OF WEEK
 ========================= */
 
 app.get(
   "/api/team-of-week",
   async (req, res) => {
-
     try {
-
-      let week = req.query.week;
-
-      if (!week) {
-
-        const today = new Date();
-
-        const day = today.getUTCDay();
-
-        const diff =
-          day === 0
-            ? -6
-            : 1 - day;
-
-        const monday =
-          new Date(today);
-
-        monday.setUTCDate(
-          today.getUTCDate() + diff
-        );
-
-        week =
-          monday
-            .toISOString()
-            .slice(0, 10);
-
-      }
-
       const result = await pool.query(`
         SELECT
-          team_of_week.id,
-          team_of_week.week_start,
-          team_of_week.position AS selected_position,
+          team_of_week.*,
 
-          players.id AS player_id,
-          players.name,
-          players.number,
-          players.position,
-          players.goals,
-          players.assists,
-          players.saves,
-          players.rating,
-          players.photo,
-          players.yellow_cards,
-          players.red_cards,
-          players.team_id,
+          g.name AS goalkeeper_name,
+          g.photo AS goalkeeper_photo,
 
-          teams.name AS team_name
+          d.name AS defender_name,
+          d.photo AS defender_photo,
+
+          m.name AS midfielder_name,
+          m.photo AS midfielder_photo,
+
+          a.name AS attacker_name,
+          a.photo AS attacker_photo
 
         FROM team_of_week
 
-        JOIN players
-          ON players.id = team_of_week.player_id
+        LEFT JOIN players g
+          ON g.id=team_of_week.goalkeeper_id
 
-        JOIN teams
-          ON teams.id = players.team_id
+        LEFT JOIN players d
+          ON d.id=team_of_week.defender_id
 
-        WHERE team_of_week.week_start=$1
+        LEFT JOIN players m
+          ON m.id=team_of_week.midfielder_id
+
+        LEFT JOIN players a
+          ON a.id=team_of_week.attacker_id
 
         ORDER BY
-          CASE
-            WHEN team_of_week.position='Qapıçı' THEN 1
-            WHEN team_of_week.position='Müdafiə' THEN 2
-            WHEN team_of_week.position='Yarımmüdafiə' THEN 3
-            WHEN team_of_week.position='Hücum' THEN 4
-            ELSE 5
-          END,
+          team_of_week.created_at DESC
+      `);
 
-          team_of_week.id
-      `, [week]);
-
-      res.json({
-        week_start: week,
-        players: result.rows
-      });
-
+      res.json(result.rows);
     } catch (error) {
-
-      console.error(error);
+      console.error(
+        "LOAD TEAM OF WEEK ERROR:",
+        error
+      );
 
       res.status(500).json({
-        error:
-          "Could not load team of the week"
+        error: "Could not load team of week"
       });
-
     }
-
   }
 );
-
-/* =========================
-   SAVE TEAM OF THE WEEK
-========================= */
 
 app.post(
   "/api/team-of-week",
   requireAdmin,
   async (req, res) => {
+    const client =
+      await pool.connect();
 
     try {
+      const week =
+        String(
+          req.body?.week || ""
+        ).trim();
 
-      const {
-        week_start,
-        players
-      } = req.body;
+      const goalkeeperId =
+        req.body?.goalkeeper_id
+          ? Number(req.body.goalkeeper_id)
+          : null;
 
-      if (!week_start) {
+      const defenderId =
+        req.body?.defender_id
+          ? Number(req.body.defender_id)
+          : null;
 
+      const midfielderId =
+        req.body?.midfielder_id
+          ? Number(req.body.midfielder_id)
+          : null;
+
+      const attackerId =
+        req.body?.attacker_id
+          ? Number(req.body.attacker_id)
+          : null;
+
+      if (!week) {
         return res.status(400).json({
-          error:
-            "week_start is required"
+          error: "Week required"
         });
-
       }
 
-      if (!Array.isArray(players)) {
+      await client.query("BEGIN");
 
-        return res.status(400).json({
-          error:
-            "players must be an array"
-        });
-
-      }
-
-      if (players.length !== 11) {
-
-        return res.status(400).json({
-          error:
-            "Team of the Week must contain exactly 11 players"
-        });
-
-      }
-
-      const uniquePlayers = [
-        ...new Set(
-          players.map(player =>
-            Number(
-              typeof player === "object"
-                ? player.player_id
-                : player
-            )
-          )
-        )
-      ];
-
-      if (uniquePlayers.length !== 11) {
-
-        return res.status(400).json({
-          error:
-            "A player cannot be selected twice"
-        });
-
-      }
-
-      const selectedPlayers =
-        await pool.query(
-          `SELECT
-            id,
-            position
-           FROM players
-           WHERE id = ANY($1::int[])`,
-          [uniquePlayers]
-        );
-
-      if (
-        selectedPlayers.rows.length !== 11
-      ) {
-
-        return res.status(400).json({
-          error:
-            "One or more players do not exist"
-        });
-
-      }
-
-      const preparedPlayers =
-        players.map(player => {
-
-          const playerId =
-            Number(
-              typeof player === "object"
-                ? player.player_id
-                : player
-            );
-
-          const dbPlayer =
-            selectedPlayers.rows.find(
-              p => p.id === playerId
-            );
-
-          const selectedPosition =
-            typeof player === "object" &&
-            player.position
-              ? player.position
-              : getPositionGroup(
-                  dbPlayer.position
-                );
-
-          return {
-            player_id: playerId,
-            position: selectedPosition
-          };
-
-        });
-
-      const goalkeeperCount =
-        preparedPlayers.filter(
-          player =>
-            player.position === "Qapıçı"
-        ).length;
-
-      if (goalkeeperCount !== 1) {
-
-        return res.status(400).json({
-          error:
-            "Team of the Week must contain exactly 1 goalkeeper"
-        });
-
-      }
-
-      const defensiveCount =
-        preparedPlayers.filter(
-          player =>
-            player.position === "Müdafiə"
-        ).length;
-
-      const midfieldCount =
-        preparedPlayers.filter(
-          player =>
-            player.position === "Yarımmüdafiə"
-        ).length;
-
-      const attackCount =
-        preparedPlayers.filter(
-          player =>
-            player.position === "Hücum"
-        ).length;
-
-      if (
-        defensiveCount +
-        midfieldCount +
-        attackCount +
-        goalkeeperCount !== 11
-      ) {
-
-        return res.status(400).json({
-          error:
-            "Invalid player positions"
-        });
-
-      }
-
-      await pool.query("BEGIN");
-
-      await pool.query(
-        `DELETE FROM team_of_week
-         WHERE week_start=$1`,
-        [week_start]
+      await client.query(
+        `
+        DELETE FROM team_of_week
+        WHERE week=$1
+        `,
+        [week]
       );
 
-      for (const player of preparedPlayers) {
-
-        await pool.query(
-          `INSERT INTO team_of_week
-          (week_start,player_id,position)
-          VALUES ($1,$2,$3)`,
+      const result =
+        await client.query(
+          `
+          INSERT INTO team_of_week
+          (
+            week,
+            goalkeeper_id,
+            defender_id,
+            midfielder_id,
+            attacker_id
+          )
+          VALUES ($1,$2,$3,$4,$5)
+          RETURNING *
+          `,
           [
-            week_start,
-            player.player_id,
-            player.position
+            week,
+            goalkeeperId,
+            defenderId,
+            midfielderId,
+            attackerId
           ]
         );
 
-      }
+      await client.query("COMMIT");
 
-      await pool.query("COMMIT");
-
-      res.json({
-        ok: true,
-        week_start,
-        players: preparedPlayers
-      });
-
+      res.json(result.rows[0]);
     } catch (error) {
-
       try {
-        await pool.query("ROLLBACK");
+        await client.query("ROLLBACK");
       } catch {}
 
-      console.error(error);
+      console.error(
+        "SAVE TEAM OF WEEK ERROR:",
+        error
+      );
 
       res.status(500).json({
-        error:
-          "Could not save team of the week"
+        error: "Could not save team of week"
       });
-
+    } finally {
+      client.release();
     }
-
   }
 );
-
-/* =========================
-   DELETE TEAM OF THE WEEK
-========================= */
 
 app.delete(
   "/api/team-of-week/:week",
   requireAdmin,
   async (req, res) => {
-
     try {
+      const week =
+        String(
+          req.params.week || ""
+        ).trim();
 
       await pool.query(
-        `DELETE FROM team_of_week
-         WHERE week_start=$1`,
-        [req.params.week]
+        `
+        DELETE FROM team_of_week
+        WHERE week=$1
+        `,
+        [week]
       );
 
       res.json({
         ok: true
       });
-
     } catch (error) {
-
-      console.error(error);
+      console.error(
+        "DELETE TEAM OF WEEK ERROR:",
+        error
+      );
 
       res.status(500).json({
-        error:
-          "Could not delete team of the week"
+        error: "Could not delete team of week"
       });
-
     }
-
   }
 );
 
@@ -2203,129 +1811,198 @@ app.delete(
    MATCHES
 ========================= */
 
-app.get("/api/matches", async (req, res) => {
+app.get(
+  "/api/matches",
+  async (req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT
+          matches.*,
 
-  try {
+          home_team.name AS home_team_name,
+          home_team.logo AS home_team_logo,
 
-    const result = await pool.query(`
-      SELECT * FROM matches
-      ORDER BY match_date DESC, id DESC
-    `);
+          away_team.name AS away_team_name,
+          away_team.logo AS away_team_logo
 
-    res.json(result.rows);
+        FROM matches
 
-  } catch (error) {
+        LEFT JOIN teams AS home_team
+          ON home_team.id=matches.home_team_id
 
-    console.error(error);
+        LEFT JOIN teams AS away_team
+          ON away_team.id=matches.away_team_id
 
-    res.status(500).json({
-      error: "Could not load matches"
-    });
+        ORDER BY
+          matches.match_date DESC NULLS LAST,
+          matches.id DESC
+      `);
 
+      res.json(result.rows);
+    } catch (error) {
+      console.error(
+        "LOAD MATCHES ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not load matches"
+      });
+    }
   }
+);
 
-});
+app.post(
+  "/api/matches",
+  requireAdmin,
+  async (req, res) => {
+    try {
+      const homeTeamId =
+        Number(req.body?.home_team_id);
 
-app.post("/api/matches", requireAdmin, async (req, res) => {
+      const awayTeamId =
+        Number(req.body?.away_team_id);
 
-  try {
+      const homeScore =
+        Number(req.body?.home_score) || 0;
 
-    const {
-      match_date,
-      home_team_id,
-      away_team_id,
-      home_score,
-      away_score
-    } = req.body;
+      const awayScore =
+        Number(req.body?.away_score) || 0;
 
-    const result = await pool.query(
-      `INSERT INTO matches
-      (
-        match_date,
-        home_team_id,
-        away_team_id,
-        home_score,
-        away_score
-      )
-      VALUES ($1,$2,$3,$4,$5)
-      RETURNING *`,
-      [
-        match_date || "",
-        Number(home_team_id),
-        Number(away_team_id),
-        Number(home_score) || 0,
-        Number(away_score) || 0
-      ]
-    );
+      const matchDate =
+        req.body?.match_date || null;
 
-    res.json(result.rows[0]);
+      const status =
+        req.body?.status ||
+        "scheduled";
 
-  } catch (error) {
+      if (
+        !Number.isInteger(homeTeamId) ||
+        !Number.isInteger(awayTeamId)
+      ) {
+        return res.status(400).json({
+          error: "Invalid teams"
+        });
+      }
 
-    console.error(error);
+      if (homeTeamId === awayTeamId) {
+        return res.status(400).json({
+          error: "Teams must be different"
+        });
+      }
 
-    res.status(500).json({
-      error: "Could not create match"
-    });
+      const result = await pool.query(
+        `
+        INSERT INTO matches
+        (
+          home_team_id,
+          away_team_id,
+          home_score,
+          away_score,
+          match_date,
+          status
+        )
+        VALUES ($1,$2,$3,$4,$5,$6)
+        RETURNING *
+        `,
+        [
+          homeTeamId,
+          awayTeamId,
+          homeScore,
+          awayScore,
+          matchDate,
+          status
+        ]
+      );
 
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error(
+        "CREATE MATCH ERROR:",
+        error
+      );
+
+      res.status(500).json({
+        error: "Could not create match"
+      });
+    }
   }
-
-});
+);
 
 app.put(
   "/api/matches/:id",
   requireAdmin,
   async (req, res) => {
-
     try {
+      const id =
+        Number(req.params.id);
 
-      const {
-        match_date,
-        home_team_id,
-        away_team_id,
-        home_score,
-        away_score
-      } = req.body;
+      const homeTeamId =
+        Number(req.body?.home_team_id);
+
+      const awayTeamId =
+        Number(req.body?.away_team_id);
+
+      const homeScore =
+        Number(req.body?.home_score) || 0;
+
+      const awayScore =
+        Number(req.body?.away_score) || 0;
+
+      const matchDate =
+        req.body?.match_date || null;
+
+      const status =
+        req.body?.status ||
+        "scheduled";
+
+      if (!Number.isInteger(id)) {
+        return res.status(400).json({
+          error: "Invalid match id"
+        });
+      }
 
       const result = await pool.query(
-        `UPDATE matches SET
-          match_date=$1,
-          home_team_id=$2,
-          away_team_id=$3,
-          home_score=$4,
-          away_score=$5
-        WHERE id=$6
-        RETURNING *`,
+        `
+        UPDATE matches
+        SET
+          home_team_id=$1,
+          away_team_id=$2,
+          home_score=$3,
+          away_score=$4,
+          match_date=$5,
+          status=$6
+        WHERE id=$7
+        RETURNING *
+        `,
         [
-          match_date || "",
-          Number(home_team_id),
-          Number(away_team_id),
-          Number(home_score) || 0,
-          Number(away_score) || 0,
-          Number(req.params.id)
+          homeTeamId,
+          awayTeamId,
+          homeScore,
+          awayScore,
+          matchDate,
+          status,
+          id
         ]
       );
 
       if (!result.rows.length) {
-
         return res.status(404).json({
           error: "Match not found"
         });
-
       }
 
       res.json(result.rows[0]);
-
     } catch (error) {
-
-      console.error(error);
+      console.error(
+        "UPDATE MATCH ERROR:",
+        error
+      );
 
       res.status(500).json({
         error: "Could not update match"
       });
-
     }
-
   }
 );
 
@@ -2333,28 +2010,31 @@ app.delete(
   "/api/matches/:id",
   requireAdmin,
   async (req, res) => {
-
     try {
+      const id =
+        Number(req.params.id);
 
       await pool.query(
-        "DELETE FROM matches WHERE id=$1",
-        [Number(req.params.id)]
+        `
+        DELETE FROM matches
+        WHERE id=$1
+        `,
+        [id]
       );
 
       res.json({
         ok: true
       });
-
     } catch (error) {
-
-      console.error(error);
+      console.error(
+        "DELETE MATCH ERROR:",
+        error
+      );
 
       res.status(500).json({
         error: "Could not delete match"
       });
-
     }
-
   }
 );
 
@@ -2362,32 +2042,32 @@ app.delete(
    HEALTH
 ========================= */
 
-app.get("/api/health", async (req, res) => {
+app.get(
+  "/api/health",
+  async (req, res) => {
+    try {
+      await pool.query("SELECT 1");
 
-  try {
+      res.json({
+        ok: true,
+        database: "connected"
+      });
+    } catch (error) {
+      console.error(
+        "HEALTH ERROR:",
+        error
+      );
 
-    await pool.query("SELECT 1");
-
-    res.json({
-      ok: true,
-      database: "connected"
-    });
-
-  } catch (error) {
-
-    console.error(error);
-
-    res.status(500).json({
-      ok: false,
-      database: "error"
-    });
-
+      res.status(500).json({
+        ok: false,
+        database: "disconnected"
+      });
+    }
   }
-
-});
+);
 
 /* =========================
-   WEBSITE
+   STATIC
 ========================= */
 
 app.use(
@@ -2397,7 +2077,6 @@ app.use(
 );
 
 app.get("*splat", (req, res) => {
-
   res.sendFile(
     path.join(
       __dirname,
@@ -2405,7 +2084,6 @@ app.get("*splat", (req, res) => {
       "index.html"
     )
   );
-
 });
 
 /* =========================
@@ -2413,27 +2091,21 @@ app.get("*splat", (req, res) => {
 ========================= */
 
 initDatabase()
-
   .then(() => {
-
     app.listen(
       PORT,
-      "0.0.0.0",
       () => {
-
         console.log(
-          `AliScore running on port ${PORT}`
+          `AliScore server running on port ${PORT}`
         );
-
       }
     );
-
   })
-
   .catch(error => {
-
-    console.error(error);
+    console.error(
+      "DATABASE INITIALIZATION ERROR:",
+      error
+    );
 
     process.exit(1);
-
   });
