@@ -522,15 +522,9 @@ Admin
 
 <main>
 
-
-<!-- =========================
-     HOME
-========================= -->
-
 <section id="home" class="section active">
 
 <div class="home-dashboard">
-
 
 <div class="home-hero">
 
@@ -541,7 +535,6 @@ Futbolun bütün nəticələri bir yerdə
 </p>
 
 </div>
-
 
 <div class="home-section">
 
@@ -555,7 +548,6 @@ Futbolun bütün nəticələri bir yerdə
 
 </div>
 
-
 <div class="home-section">
 
 <div class="home-title">
@@ -568,7 +560,6 @@ Futbolun bütün nəticələri bir yerdə
 
 </div>
 
-
 <div class="home-section">
 
 <div class="home-title">
@@ -580,7 +571,6 @@ Futbolun bütün nəticələri bir yerdə
 <div id="homeTeamWeek"></div>
 
 </div>
-
 
 <div class="notification-box">
 
@@ -605,15 +595,9 @@ onclick="enableNotifications()"
 
 </div>
 
-
 </div>
 
 </section>
-
-
-<!-- =========================
-     TEAMS
-========================= -->
 
 <section id="teams" class="section">
 
@@ -622,11 +606,6 @@ onclick="enableNotifications()"
 <div id="teamsList" class="cards"></div>
 
 </section>
-
-
-<!-- =========================
-     TABLE
-========================= -->
 
 <section id="table" class="section">
 
@@ -661,11 +640,6 @@ onclick="enableNotifications()"
 
 </section>
 
-
-<!-- =========================
-     MATCHES
-========================= -->
-
 <section id="matches" class="section">
 
 <h2>📅 Matçlar</h2>
@@ -673,11 +647,6 @@ onclick="enableNotifications()"
 <div id="matchesList"></div>
 
 </section>
-
-
-<!-- =========================
-     STATISTICS
-========================= -->
 
 <section id="statistics" class="section">
 
@@ -687,11 +656,6 @@ onclick="enableNotifications()"
 
 </section>
 
-
-<!-- =========================
-     TEAM WEEK
-========================= -->
-
 <section id="teamweek" class="section">
 
 <h2>⭐ Komanda həftəsi</h2>
@@ -700,13 +664,7 @@ onclick="enableNotifications()"
 
 </section>
 
-
-<!-- =========================
-     ADMIN
-========================= -->
-
 <section id="admin" class="section">
-
 
 <div id="adminLogin">
 
@@ -736,9 +694,7 @@ Daxil ol
 
 </div>
 
-
 <div id="adminPanel" class="hidden">
-
 
 <div class="admin-box">
 
@@ -753,9 +709,6 @@ Daxil ol
 </div>
 
 </div>
-
-
-<!-- TEAMS -->
 
 <div class="admin-box">
 
@@ -778,9 +731,6 @@ Komanda əlavə et
 <div id="adminTeamsList"></div>
 
 </div>
-
-
-<!-- PLAYERS -->
 
 <div class="admin-box">
 
@@ -851,9 +801,6 @@ Oyunçu əlavə et
 
 </div>
 
-
-<!-- TEAM WEEK ADMIN -->
-
 <div class="admin-box">
 
 <h3>⭐ Komanda həftəsi</h3>
@@ -885,9 +832,6 @@ Oyunçu əlavə et
 </button>
 
 </div>
-
-
-<!-- MATCH ADMIN -->
 
 <div class="admin-box">
 
@@ -931,13 +875,11 @@ Matç əlavə et
 
 </div>
 
-
 </div>
 
 </section>
 
 </main>
-
 
 <script>
 
@@ -3372,9 +3314,6 @@ team
 
 </div>
 
-
-<!-- GOALS -->
-
 <div class="goal-admin">
 
 <div class="goal-admin-count">
@@ -3406,9 +3345,6 @@ onclick="removePlayerGoal(${player.id})"
 </div>
 
 </div>
-
-
-<!-- YELLOW CARD -->
 
 <div class="card-admin card-admin-yellow">
 
@@ -3442,9 +3378,6 @@ onclick="removePlayerYellowCard(${player.id})"
 
 </div>
 
-
-<!-- RED CARD -->
-
 <div class="card-admin card-admin-red">
 
 <div class="card-admin-count">
@@ -3477,9 +3410,7 @@ onclick="removePlayerRedCard(${player.id})"
 
 </div>
 
-
 <br>
-
 
 <div class="form-row">
 
@@ -3532,7 +3463,6 @@ Hücum
 
 </select>
 
-
 <select id="player-team-${player.id}">
 
 <option value="">
@@ -3560,7 +3490,6 @@ ${escapeHtml(teamOption.name)}
 </select>
 
 </div>
-
 
 <div class="stats-grid">
 
@@ -3598,7 +3527,6 @@ placeholder="Reytinq"
 >
 
 </div>
-
 
 <div class="photo-admin">
 
@@ -3642,7 +3570,6 @@ onclick="removePlayerPhoto(${player.id})"
 </button>
 
 </div>
-
 
 <br>
 
@@ -4589,6 +4516,7 @@ document.getElementById(
 "weekAttacker"
 ).value;
 
+
 if(
 !goalkeeper_id||
 !defender_id||
@@ -4604,6 +4532,49 @@ return;
 
 }
 
+
+/* =========================
+   WEEK START
+========================= */
+
+const today=new Date();
+
+const day=today.getDay();
+
+const difference=
+day===0
+?
+-6
+:
+1-day;
+
+const monday=new Date(today);
+
+monday.setDate(
+today.getDate()+difference
+);
+
+const year=
+monday.getFullYear();
+
+const month=
+String(
+monday.getMonth()+1
+).padStart(2,"0");
+
+const date=
+String(
+monday.getDate()
+).padStart(2,"0");
+
+const week_start=
+year+"-"+month+"-"+date;
+
+
+/* =========================
+   SAVE
+========================= */
+
 try{
 
 const response=
@@ -4611,29 +4582,45 @@ await fetch(
 "/api/team-of-week",
 {
 method:"POST",
+
 headers:{
-"Content-Type":"application/json"
+"Content-Type":
+"application/json"
 },
+
 body:JSON.stringify({
 
+week_start:
+week_start,
+
 goalkeeper_id:
-Number(goalkeeper_id),
+Number(
+goalkeeper_id
+),
 
 defender_id:
-Number(defender_id),
+Number(
+defender_id
+),
 
 midfielder_id:
-Number(midfielder_id),
+Number(
+midfielder_id
+),
 
 attacker_id:
-Number(attacker_id)
+Number(
+attacker_id
+)
 
 })
 }
 );
 
+
 const data=
 await response.json();
+
 
 if(!response.ok){
 
@@ -4646,21 +4633,35 @@ return;
 
 }
 
+
+/* =========================
+   REFRESH
+========================= */
+
 await loadTeamWeek();
+
+fillTeamWeekSelects();
 
 renderTeamWeek();
 
 renderHome();
 
+
 alert(
 "⭐ Komanda həftəsi saxlanıldı."
 );
 
+
 }catch(error){
 
-console.error(error);
+console.error(
+"TEAM WEEK ERROR:",
+error
+);
 
-alert("Server xətası.");
+alert(
+"Server xətası."
+);
 
 }
 
