@@ -1678,47 +1678,89 @@ app.get(
     }
   }
 );
-
 app.post(
   "/api/team-of-week",
   requireAdmin,
   async (req, res) => {
+
     const client =
       await pool.connect();
 
     try {
-      const week =
+
+      let week =
         String(
           req.body?.week || ""
         ).trim();
 
+
+      /* =========================
+         AUTO WEEK
+      ========================= */
+
+      if (!week) {
+
+        const now =
+          new Date();
+
+        const day =
+          now.getDay();
+
+        const diff =
+          day === 0
+            ? -6
+            : 1 - day;
+
+        const monday =
+          new Date(now);
+
+        monday.setDate(
+          now.getDate() + diff
+        );
+
+        week =
+          monday
+            .toISOString()
+            .slice(0, 10);
+      }
+
+
       const goalkeeperId =
         req.body?.goalkeeper_id
-          ? Number(req.body.goalkeeper_id)
+          ? Number(
+              req.body.goalkeeper_id
+            )
           : null;
+
 
       const defenderId =
         req.body?.defender_id
-          ? Number(req.body.defender_id)
+          ? Number(
+              req.body.defender_id
+            )
           : null;
+
 
       const midfielderId =
         req.body?.midfielder_id
-          ? Number(req.body.midfielder_id)
+          ? Number(
+              req.body.midfielder_id
+            )
           : null;
+
 
       const attackerId =
         req.body?.attacker_id
-          ? Number(req.body.attacker_id)
+          ? Number(
+              req.body.attacker_id
+            )
           : null;
 
-      if (!week) {
-        return res.status(400).json({
-          error: "Week required"
-        });
-      }
 
-      await client.query("BEGIN");
+      await client.query(
+        "BEGIN"
+      );
+
 
       await client.query(
         `
@@ -1727,6 +1769,7 @@ app.post(
         `,
         [week]
       );
+
 
       const result =
         await client.query(
@@ -1750,6 +1793,47 @@ app.post(
             attackerId
           ]
         );
+
+
+      await client.query(
+        "COMMIT"
+      );
+
+
+      res.json(
+        result.rows[0]
+      );
+
+
+    } catch (error) {
+
+      try {
+        await client.query(
+          "ROLLBACK"
+        );
+      } catch {}
+
+
+      console.error(
+        "SAVE TEAM OF WEEK ERROR:",
+        error
+      );
+
+
+      res.status(500).json({
+        error:
+          "Could not save team of week"
+      });
+
+
+    } finally {
+
+      client.release();
+
+    }
+  }
+);
+
 
       await client.query("COMMIT");
 
